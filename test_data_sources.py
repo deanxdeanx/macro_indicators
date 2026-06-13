@@ -6,7 +6,7 @@ import unittest
 
 import pandas as pd
 
-from data_sources import _extract_close_prices, latest_metrics
+from data_sources import Indicator, _extract_close_prices, latest_metrics
 
 
 class DataSourceTests(unittest.TestCase):
@@ -42,6 +42,11 @@ class DataSourceTests(unittest.TestCase):
 
         self.assertEqual(list(close.columns), ["TEST"])
         self.assertEqual(close.iloc[-1, 0], 11.0)
+
+    def test_indicator_defaults_to_percent_change(self) -> None:
+        indicator = Indicator("TEST", "Test", "Test source", "points", "Daily")
+
+        self.assertEqual(indicator.change_mode, "percent")
 
 
 if __name__ == "__main__":

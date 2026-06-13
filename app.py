@@ -61,15 +61,18 @@ def render_indicator(indicator: Indicator, series: pd.Series, start: date, end: 
         st.warning(f"No {indicator.name} data is available in the selected date range.")
         return
 
-    metrics = latest_metrics(series, indicator.change_mode)
+    # Streamlit Cloud can briefly retain objects from the previous app revision
+    # during a hot reload. Defaulting keeps those objects compatible.
+    change_mode = getattr(indicator, "change_mode", "percent")
+    metrics = latest_metrics(series, change_mode)
     st.markdown(f"#### {indicator.name}")
     metric_columns = st.columns(3)
     metric_columns[0].metric("Latest", format_value(metrics["latest"], indicator.unit))
     metric_columns[1].metric(
         "Previous period",
-        format_change(metrics["previous_change"], indicator.change_mode),
+        format_change(metrics["previous_change"], change_mode),
     )
-    metric_columns[2].metric("YTD", format_change(metrics["ytd_change"], indicator.change_mode))
+    metric_columns[2].metric("YTD", format_change(metrics["ytd_change"], change_mode))
 
     figure = go.Figure(
         go.Scatter(
