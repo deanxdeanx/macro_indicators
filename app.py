@@ -25,6 +25,9 @@ st.set_page_config(page_title="Macroeconomic Dashboard", page_icon="📈", layou
 
 HISTORY_START = date(date.today().year - 6, 1, 1)
 DEFAULT_START = date(date.today().year - 5, 1, 1)
+CHART_HEIGHT = 310
+CHART_MARGIN = {"l": 10, "r": 10, "t": 10, "b": 10}
+CHART_COLOR = "#3b82f6"
 
 
 def format_value(value: float, unit: str) -> str:
@@ -36,11 +39,16 @@ def format_value(value: float, unit: str) -> str:
         return f"${value:,.1f}B"
     if unit == "%":
         return f"{value:,.2f}%"
+    if unit == "claims":
+        return f"{value:,.0f}"
     return f"{value:,.2f}"
 
 
-def format_change(value: float) -> str:
-    return "N/A" if math.isnan(value) else f"{value:+.2f}%"
+def format_change(value: float, change_mode: str) -> str:
+    if math.isnan(value):
+        return "N/A"
+    suffix = " pp" if change_mode == "points" else "%"
+    return f"{value:+.2f}{suffix}"
 
 
 def filter_series(series: pd.Series, start: date, end: date) -> pd.Series:
@@ -53,32 +61,44 @@ def render_indicator(indicator: Indicator, series: pd.Series, start: date, end: 
         st.warning(f"No {indicator.name} data is available in the selected date range.")
         return
 
-    metrics = latest_metrics(series)
+    metrics = latest_metrics(series, indicator.change_mode)
     st.markdown(f"#### {indicator.name}")
     metric_columns = st.columns(3)
     metric_columns[0].metric("Latest", format_value(metrics["latest"], indicator.unit))
-    metric_columns[1].metric("Previous period", format_change(metrics["previous_change"]))
-    metric_columns[2].metric("YTD", format_change(metrics["ytd_change"]))
+    metric_columns[1].metric(
+        "Previous period",
+        format_change(metrics["previous_change"], indicator.change_mode),
+    )
+    metric_columns[2].metric("YTD", format_change(metrics["ytd_change"], indicator.change_mode))
 
     figure = go.Figure(
         go.Scatter(
             x=visible.index,
             y=visible.values,
             mode="lines",
-            line={"color": "#3b82f6", "width": 2},
+            line={"color": CHART_COLOR, "width": 2},
             hovertemplate=f"%{{x|%b %d, %Y}}<br>%{{y:,.2f}} {indicator.unit}<extra></extra>",
         )
     )
     figure.update_layout(
-        height=310,
-        margin={"l": 10, "r": 10, "t": 10, "b": 10},
+        height=CHART_HEIGHT,
+        margin=CHART_MARGIN,
         hovermode="x unified",
         xaxis_title=None,
         yaxis_title=indicator.unit,
         template="plotly_white",
+        plot_bgcolor="rgba(0,0,0,0)",
     )
-    figure.update_xaxes(rangeslider_visible=False)
+    figure.update_xaxes(rangeslider_visible=False, gridcolor="#e5e7eb", zeroline=False)
+    figure.update_yaxes(gridcolor="#e5e7eb", zeroline=False)
     st.plotly_chart(figure, width="stretch", config={"displaylogo": False})
+    st.download_button(
+        "Download CSV",
+        data=visible.rename(indicator.name).to_csv(index_label="date"),
+        file_name=f"{indicator.key}_data.csv",
+        mime="text/csv",
+        key=f"export_{indicator.key}",
+    )
     latest_date = metrics["latest_date"].strftime("%b %d, %Y")
     st.caption(f"Source: {indicator.source} · {indicator.frequency} · Latest observation: {latest_date}")
 
@@ -170,10 +190,47 @@ with companies_tab:
         default=list(TOP_COMPANY_TICKERS)[:5],
         format_func=lambda ticker: f"{TOP_COMPANY_TICKERS[ticker]} ({ticker})",
     )
+    show_normalized = st.checkbox(
+        "Show normalized comparison (start = 100)",
+        value=True,
+        help="Compares relative performance over the selected date range.",
+    )
     selected_indicators = [
         indicator for indicator in company_indicators if indicator.key in selected_companies
     ]
     if selected_indicators:
+        if show_normalized:
+            normalized = {}
+            for indicator in selected_indicators:
+                if indicator.key not in company_data:
+                    continue
+                visible = filter_series(company_data[indicator.key], range_start, range_end)
+                if not visible.empty and visible.iloc[0] != 0:
+                    normalized[indicator.name] = visible.div(visible.iloc[0]).mul(100)
+            if normalized:
+                comparison = pd.DataFrame(normalized)
+                comparison_figure = go.Figure()
+                for column in comparison:
+                    comparison_figure.add_trace(
+                        go.Scatter(
+                            x=comparison.index,
+                            y=comparison[column],
+                            mode="lines",
+                            name=column,
+                            hovertemplate="%{x|%b %d, %Y}<br>%{y:,.2f}<extra>%{fullData.name}</extra>",
+                        )
+                    )
+                comparison_figure.update_layout(
+                    height=430,
+                    margin=CHART_MARGIN,
+                    hovermode="x unified",
+                    yaxis_title="Normalized value",
+                    template="plotly_white",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                )
+                comparison_figure.update_xaxes(gridcolor="#e5e7eb", zeroline=False)
+                comparison_figure.update_yaxes(gridcolor="#e5e7eb", zeroline=False)
+                st.plotly_chart(comparison_figure, width="stretch", config={"displaylogo": False})
         render_section("", selected_indicators, company_data, company_errors, range_start, range_end)
     else:
         st.info("Select at least one company to display its chart.")
