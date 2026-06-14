@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import date
 from io import StringIO
+import logging
 import time
 from typing import Iterable
 from urllib.parse import urlencode
@@ -20,6 +21,18 @@ FRED_CSV_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv"
 FRED_CACHE_TTL = 60 * 60 * 12
 YAHOO_CACHE_TTL = 60 * 60 * 6
 MAX_FETCH_ATTEMPTS = 3
+FRESHNESS_THRESHOLDS_DAYS = {
+    "Daily": 7,
+    "Weekly": 16,
+    "Monthly": 75,
+    "Quarterly": 200,
+}
+
+logger = logging.getLogger(__name__)
+
+
+class DataSourceError(RuntimeError):
+    """A source failure with a concise message suitable for the dashboard."""
 
 
 @dataclass(frozen=True)
@@ -31,6 +44,8 @@ class Indicator:
     frequency: str
     transform: str = "none"
     change_mode: str = "percent"
+    description: str = ""
+    max_age_days: int | None = None
 
 
 MACRO_INDICATORS = (
@@ -52,7 +67,14 @@ MACRO_INDICATORS = (
         "Quarterly",
         change_mode="points",
     ),
-    Indicator("M2SL", "US M2 Money Supply", "FRED", "$ billions", "Monthly"),
+    Indicator(
+        "M2SL",
+        "US M2 Money Supply",
+        "FRED",
+        "$ billions",
+        "Monthly",
+        description="Seasonally adjusted monthly M2 level.",
+    ),
     Indicator(
         "T10Y2Y",
         "10Y-2Y Treasury Spread",
@@ -60,6 +82,16 @@ MACRO_INDICATORS = (
         "%",
         "Daily",
         change_mode="points",
+        description="Negative values indicate an inverted yield curve.",
+    ),
+    Indicator(
+        "DGS10",
+        "10-Year Treasury Yield",
+        "FRED",
+        "%",
+        "Daily",
+        change_mode="points",
+        description="Benchmark 10-year constant-maturity Treasury yield.",
     ),
     Indicator("ICSA", "Initial Jobless Claims", "FRED", "claims", "Weekly"),
     Indicator(
@@ -69,6 +101,15 @@ MACRO_INDICATORS = (
         "%",
         "Monthly",
         change_mode="points",
+    ),
+    Indicator(
+        "UMCSENT",
+        "Consumer Sentiment",
+        "FRED",
+        "index",
+        "Monthly",
+        description="University of Michigan index; not seasonally adjusted and delayed one month.",
+        max_age_days=110,
     ),
 )
 
@@ -123,6 +164,66 @@ def _validate_series(series: pd.Series, name: str) -> pd.Series:
     return series
 
 
+def validate_fred_response(frame: pd.DataFrame, series_id: str) -> pd.DataFrame:
+    """Validate the schema and usable content of a FRED CSV response."""
+    required_columns = {"observation_date", series_id}
+    missing_columns = required_columns.difference(frame.columns)
+    if missing_columns:
+        missing = ", ".join(sorted(missing_columns))
+        raise DataSourceError(
+            f"FRED returned an invalid response for {series_id} (missing {missing})."
+        )
+    if frame.empty:
+        raise DataSourceError(f"FRED returned no observations for {series_id}.")
+    valid_dates = pd.to_datetime(frame["observation_date"], errors="coerce").notna()
+    if not valid_dates.all():
+        raise DataSourceError(f"FRED returned malformed observation dates for {series_id}.")
+    if pd.to_numeric(frame[series_id], errors="coerce").notna().sum() == 0:
+        raise DataSourceError(f"FRED returned no numeric observations for {series_id}.")
+    return frame
+
+
+def series_freshness(
+    series: pd.Series,
+    frequency: str,
+    max_age_days: int | None = None,
+    as_of: date | pd.Timestamp | None = None,
+) -> dict[str, int | bool | pd.Timestamp | None]:
+    """Return observation age and a frequency-aware potential-staleness flag."""
+    threshold = max_age_days or FRESHNESS_THRESHOLDS_DAYS.get(frequency, 30)
+    clean = series.dropna().sort_index()
+    if clean.empty:
+        return {
+            "latest_date": None,
+            "age_days": 0,
+            "max_age_days": threshold,
+            "is_stale": True,
+        }
+
+    latest_date = pd.Timestamp(clean.index[-1]).tz_localize(None).normalize()
+    reference_date = pd.Timestamp(as_of or date.today()).tz_localize(None).normalize()
+    age_days = max(0, int((reference_date - latest_date).days))
+    return {
+        "latest_date": latest_date,
+        "age_days": age_days,
+        "max_age_days": threshold,
+        "is_stale": age_days > threshold,
+    }
+
+
+def _request_error_message(source: str, item: str, exc: requests.RequestException) -> str:
+    if isinstance(exc, requests.Timeout):
+        return f"{source} timed out while fetching {item}. Try refreshing the data."
+    if isinstance(exc, requests.HTTPError) and exc.response is not None:
+        status = exc.response.status_code
+        if status == 429:
+            return f"{source} rate-limited the request for {item}. Try again later."
+        if status >= 500:
+            return f"{source} is temporarily unavailable for {item} (HTTP {status})."
+        return f"{source} rejected the request for {item} (HTTP {status})."
+    return f"{source} could not fetch {item}. Check the connection and try refreshing the data."
+
+
 @st.cache_data(ttl=FRED_CACHE_TTL, show_spinner=False)
 def fetch_fred_series(series_id: str, start_date: date, transform: str = "none") -> pd.Series:
     """Fetch one FRED series through the public CSV endpoint."""
@@ -137,15 +238,23 @@ def fetch_fred_series(series_id: str, start_date: date, transform: str = "none")
             response = requests.get(url, timeout=60)
             response.raise_for_status()
             break
-        except requests.RequestException:
+        except requests.RequestException as exc:
+            logger.warning(
+                "fred_request_failed series_id=%s attempt=%s error=%s",
+                series_id,
+                attempt + 1,
+                type(exc).__name__,
+            )
             if attempt == MAX_FETCH_ATTEMPTS - 1:
-                raise
+                raise DataSourceError(_request_error_message("FRED", series_id, exc)) from exc
             time.sleep(2**attempt)
 
-    frame = pd.read_csv(StringIO(response.text), index_col="observation_date")
-    if series_id not in frame:
-        raise ValueError(f"FRED response did not include {series_id}.")
-    series = _normalize_series(frame[series_id], series_id)
+    try:
+        frame = pd.read_csv(StringIO(response.text))
+    except pd.errors.ParserError as exc:
+        raise DataSourceError(f"FRED returned unreadable CSV data for {series_id}.") from exc
+    frame = validate_fred_response(frame, series_id)
+    series = _normalize_series(frame.set_index("observation_date")[series_id], series_id)
     if transform == "yoy":
         series = series.pct_change(periods=12, fill_method=None).mul(100).dropna()
     return _validate_series(series, series_id)
@@ -188,11 +297,26 @@ def fetch_yahoo_prices(tickers: tuple[str, ...], start_date: date) -> pd.DataFra
             if not close.empty:
                 return close
             raise ValueError("Yahoo Finance returned no price data.")
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "yahoo_request_failed ticker_count=%s attempt=%s error=%s",
+                len(tickers),
+                attempt + 1,
+                type(exc).__name__,
+            )
             if attempt == MAX_FETCH_ATTEMPTS - 1:
-                raise
+                detail = str(exc).lower()
+                if "rate limit" in detail or "429" in detail:
+                    message = "Yahoo Finance rate-limited the request. Try again later."
+                elif isinstance(exc, TimeoutError) or "timed out" in detail:
+                    message = "Yahoo Finance timed out. Try refreshing the data."
+                else:
+                    message = (
+                        "Yahoo Finance returned no usable price data. Try refreshing the data."
+                    )
+                raise DataSourceError(message) from exc
             time.sleep(2**attempt)
-    raise RuntimeError("Yahoo Finance fetch failed.")
+    raise DataSourceError("Yahoo Finance fetch failed.")
 
 
 def latest_metrics(series: pd.Series, change_mode: str = "percent") -> dict[str, float | pd.Timestamp]:
@@ -242,6 +366,11 @@ def fetch_macro_data(start_date: date) -> tuple[dict[str, pd.Series], dict[str, 
             try:
                 data[indicator.key] = future.result()
             except Exception as exc:  # Individual failures should not take down the dashboard.
+                logger.error(
+                    "macro_indicator_fetch_failed series_id=%s error=%s",
+                    indicator.key,
+                    type(exc).__name__,
+                )
                 errors[indicator.key] = str(exc)
 
     ordered_data = {
@@ -259,5 +388,15 @@ def frame_to_series(
         if indicator.key not in frame or frame[indicator.key].dropna().empty:
             errors[indicator.key] = "No data returned."
             continue
-        data[indicator.key] = _normalize_series(frame[indicator.key], indicator.key)
+        try:
+            data[indicator.key] = _validate_series(
+                _normalize_series(frame[indicator.key], indicator.key), indicator.key
+            )
+        except (TypeError, ValueError) as exc:
+            logger.error(
+                "price_series_validation_failed ticker=%s error=%s",
+                indicator.key,
+                type(exc).__name__,
+            )
+            errors[indicator.key] = "The source returned malformed price data."
     return data, errors

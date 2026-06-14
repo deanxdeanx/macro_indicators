@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+import logging
 import math
 
 import pandas as pd
@@ -18,8 +19,11 @@ from data_sources import (
     fetch_yahoo_prices,
     frame_to_series,
     latest_metrics,
+    series_freshness,
 )
 
+
+logger = logging.getLogger(__name__)
 
 st.set_page_config(
     page_title="Macro Terminal",
@@ -388,7 +392,10 @@ def make_line_figure(
                 if color == NEGATIVE
                 else "rgba(120, 146, 168, 0.06)"
             ),
-            hovertemplate=f"%{{x|%b %d, %Y}}<br>%{{y:,.2f}} {indicator.unit}<extra></extra>",
+            hovertemplate=(
+                f"<b>{indicator.name}</b><br>"
+                f"%{{x|%b %d, %Y}}<br>%{{y:,.2f}} {indicator.unit}<extra></extra>"
+            ),
         )
     )
     figure.update_layout(
@@ -444,7 +451,11 @@ def render_indicator(indicator: Indicator, series: pd.Series, start: date, end: 
     with st.container(border=True):
         title_column, value_column = st.columns([1.5, 1], vertical_alignment="center")
         title_column.markdown(f"**{indicator.name}**")
-        title_column.caption(f"{indicator.key} · {indicator.frequency.upper()} · {indicator.source}")
+        title_column.caption(
+            f"{indicator.key} · {indicator.frequency.upper()} · {indicator.source}"
+        )
+        if indicator.description:
+            title_column.caption(indicator.description)
         value_column.metric(
             "LATEST",
             format_value(float(metrics["latest"]), indicator.unit, compact=True),
@@ -457,8 +468,14 @@ def render_indicator(indicator: Indicator, series: pd.Series, start: date, end: 
         )
         ytd_column, date_column, export_column = st.columns([1, 1.3, 1])
         ytd_column.caption(f"YTD {format_change(float(metrics['ytd_change']), change_mode)}")
+        freshness = series_freshness(
+            series,
+            indicator.frequency,
+            max_age_days=indicator.max_age_days,
+        )
         latest_date = pd.Timestamp(metrics["latest_date"]).strftime("%d %b %Y")
-        date_column.caption(f"AS OF {latest_date.upper()}")
+        age_days = int(freshness["age_days"])
+        date_column.caption(f"AS OF {latest_date.upper()} · {age_days}D OLD")
         export_column.download_button(
             "EXPORT CSV",
             data=visible.rename(indicator.name).to_csv(index_label="date"),
@@ -467,6 +484,11 @@ def render_indicator(indicator: Indicator, series: pd.Series, start: date, end: 
             key=f"export_{indicator.key}",
             width="stretch",
         )
+        if freshness["is_stale"]:
+            st.warning(
+                f"Latest observation is {age_days} days old; this may be stale for "
+                f"{indicator.frequency.lower()} data."
+            )
 
 
 def render_grid(
@@ -552,7 +574,7 @@ st.markdown(
         </div>
         <div class="market-status">
             <span class="status-dot"></span>
-            Data feeds operational · {date.today().strftime("%d %b %Y")}
+            Observation window through · {date.today().strftime("%d %b %Y")}
         </div>
     </div>
     """,
@@ -592,6 +614,7 @@ with st.spinner("Synchronizing economic and market feeds..."):
         market_frame = fetch_yahoo_prices(market_tickers, HISTORY_START)
         market_data, market_errors = frame_to_series(market_frame, MARKET_INDICATORS)
     except Exception as exc:
+        logger.exception("market_data_fetch_failed")
         market_data, market_errors = {}, {ticker: str(exc) for ticker in market_tickers}
 
     company_tickers = tuple(TOP_COMPANY_TICKERS)
@@ -603,6 +626,7 @@ with st.spinner("Synchronizing economic and market feeds..."):
         company_frame = fetch_yahoo_prices(company_tickers, HISTORY_START)
         company_data, company_errors = frame_to_series(company_frame, company_indicators)
     except Exception as exc:
+        logger.exception("company_data_fetch_failed")
         company_data, company_errors = {}, {ticker: str(exc) for ticker in company_tickers}
 
 section_heading(
