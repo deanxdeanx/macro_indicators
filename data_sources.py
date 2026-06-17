@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import date
 from io import StringIO
@@ -366,30 +365,27 @@ def latest_metrics(series: pd.Series, change_mode: str = "percent") -> dict[str,
 
 
 def fetch_macro_data(start_date: date, end_date: date | None = None) -> tuple[dict[str, pd.Series], dict[str, str]]:
-    """Fetch independent FRED indicators concurrently."""
+    """Fetch independent FRED indicators with per-series failure isolation."""
     if end_date is None:
         end_date = date.today()
     data: dict[str, pd.Series] = {}
     errors: dict[str, str] = {}
 
-    def fetch_indicator(indicator: Indicator) -> pd.Series:
-        return fetch_fred_series(indicator.key, start_date, indicator.transform, end_date)
-
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        futures = {
-            executor.submit(fetch_indicator, indicator): indicator for indicator in MACRO_INDICATORS
-        }
-        for future in as_completed(futures):
-            indicator = futures[future]
-            try:
-                data[indicator.key] = future.result()
-            except Exception as exc:  # Individual failures should not take down the dashboard.
-                logger.error(
-                    "macro_indicator_fetch_failed series_id=%s error=%s",
-                    indicator.key,
-                    type(exc).__name__,
-                )
-                errors[indicator.key] = str(exc)
+    for indicator in MACRO_INDICATORS:
+        try:
+            data[indicator.key] = fetch_fred_series(
+                indicator.key,
+                start_date,
+                indicator.transform,
+                end_date,
+            )
+        except Exception as exc:  # Individual failures should not take down the dashboard.
+            logger.error(
+                "macro_indicator_fetch_failed series_id=%s error=%s",
+                indicator.key,
+                type(exc).__name__,
+            )
+            errors[indicator.key] = str(exc)
 
     ordered_data = {
         indicator.key: data[indicator.key] for indicator in MACRO_INDICATORS if indicator.key in data

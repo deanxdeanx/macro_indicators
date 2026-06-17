@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 import unittest
+from unittest.mock import patch
 
 import pandas as pd
 
@@ -11,6 +12,7 @@ from data_sources import (
     DataSourceError,
     Indicator,
     _extract_close_prices,
+    fetch_macro_data,
     frame_to_series,
     latest_metrics,
     series_freshness,
@@ -98,6 +100,21 @@ class DataSourceTests(unittest.TestCase):
         self.assertEqual(data, {})
         self.assertEqual(errors["GOOD"], "The source returned malformed price data.")
         self.assertEqual(errors["MISSING"], "No data returned.")
+
+    def test_fetch_macro_data_isolates_indicator_failures(self) -> None:
+        sample = pd.Series([1.0], index=pd.to_datetime(["2026-01-01"]))
+
+        def fake_fetch(series_id, start_date, transform="none", end_date=None):
+            if series_id == "UNRATE":
+                raise TypeError("temporary failure")
+            return sample.rename(series_id)
+
+        with patch("data_sources.fetch_fred_series", side_effect=fake_fetch):
+            data, errors = fetch_macro_data(date(2026, 1, 1), date(2026, 2, 1))
+
+        self.assertNotIn("UNRATE", data)
+        self.assertEqual(errors["UNRATE"], "temporary failure")
+        self.assertIn("CPIAUCSL", data)
 
 
 if __name__ == "__main__":

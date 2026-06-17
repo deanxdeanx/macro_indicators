@@ -630,7 +630,12 @@ st.markdown(
 )
 
 with st.spinner("Synchronizing economic and market feeds..."):
-    macro_data, macro_errors = fetch_macro_data(HISTORY_START, range_end)
+    try:
+        macro_data, macro_errors = fetch_macro_data(HISTORY_START, range_end)
+    except Exception as exc:
+        logger.exception("macro_data_fetch_failed")
+        macro_data = {}
+        macro_errors = {indicator.key: str(exc) for indicator in MACRO_INDICATORS}
 
     market_tickers = tuple(indicator.key for indicator in MARKET_INDICATORS)
     try:
