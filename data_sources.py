@@ -74,6 +74,7 @@ MACRO_INDICATORS = (
         "$ billions",
         "Monthly",
         description="Seasonally adjusted monthly M2 level.",
+        max_age_days=120,
     ),
     Indicator(
         "T10Y2Y",
@@ -93,7 +94,14 @@ MACRO_INDICATORS = (
         change_mode="points",
         description="Benchmark 10-year constant-maturity Treasury yield.",
     ),
-    Indicator("ICSA", "Initial Jobless Claims", "FRED", "claims", "Weekly"),
+    Indicator(
+        "ICSA",
+        "Initial Jobless Claims",
+        "FRED",
+        "claims",
+        "Weekly",
+        change_mode="points",
+    ),
     Indicator(
         "FEDFUNDS",
         "Effective Federal Funds Rate",
@@ -225,17 +233,23 @@ def _request_error_message(source: str, item: str, exc: requests.RequestExceptio
 
 
 @st.cache_data(ttl=FRED_CACHE_TTL, show_spinner=False)
-def fetch_fred_series(series_id: str, start_date: date, transform: str = "none") -> pd.Series:
+def fetch_fred_series(series_id: str, start_date: date, transform: str = "none", end_date: date | None = None) -> pd.Series:
     """Fetch one FRED series through the public CSV endpoint."""
+    if end_date is None:
+        end_date = date.today()
     params = {
         "id": series_id,
         "cosd": start_date.isoformat(),
-        "coed": date.today().isoformat(),
+        "coed": end_date.isoformat(),
     }
     url = f"{FRED_CSV_URL}?{urlencode(params)}"
     for attempt in range(MAX_FETCH_ATTEMPTS):
         try:
-            response = requests.get(url, timeout=60)
+            response = requests.get(
+                url,
+                timeout=60,
+                headers={"User-Agent": "macro_indicators/1.0"},
+            )
             response.raise_for_status()
             break
         except requests.RequestException as exc:
@@ -279,14 +293,16 @@ def _extract_close_prices(download: pd.DataFrame, tickers: list[str]) -> pd.Data
 
 
 @st.cache_data(ttl=YAHOO_CACHE_TTL, show_spinner=False)
-def fetch_yahoo_prices(tickers: tuple[str, ...], start_date: date) -> pd.DataFrame:
+def fetch_yahoo_prices(tickers: tuple[str, ...], start_date: date, end_date: date | None = None) -> pd.DataFrame:
     """Fetch adjusted historical close prices from Yahoo Finance in one batch."""
+    if end_date is None:
+        end_date = date.today()
     for attempt in range(MAX_FETCH_ATTEMPTS):
         try:
             download = yf.download(
                 list(tickers),
                 start=start_date.isoformat(),
-                end=(date.today() + pd.Timedelta(days=1)).isoformat(),
+                end=(end_date + pd.Timedelta(days=1)).isoformat(),
                 auto_adjust=True,
                 progress=False,
                 group_by="column",
@@ -349,13 +365,15 @@ def latest_metrics(series: pd.Series, change_mode: str = "percent") -> dict[str,
     }
 
 
-def fetch_macro_data(start_date: date) -> tuple[dict[str, pd.Series], dict[str, str]]:
+def fetch_macro_data(start_date: date, end_date: date | None = None) -> tuple[dict[str, pd.Series], dict[str, str]]:
     """Fetch independent FRED indicators concurrently."""
+    if end_date is None:
+        end_date = date.today()
     data: dict[str, pd.Series] = {}
     errors: dict[str, str] = {}
 
     def fetch_indicator(indicator: Indicator) -> pd.Series:
-        return fetch_fred_series(indicator.key, start_date, indicator.transform)
+        return fetch_fred_series(indicator.key, start_date, indicator.transform, end_date)
 
     with ThreadPoolExecutor(max_workers=4) as executor:
         futures = {

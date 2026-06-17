@@ -336,22 +336,34 @@ def inject_terminal_css() -> None:
     )
 
 
+def _compact_number(value: float) -> str:
+    """Format large numbers with K/M suffix for compact display."""
+    if abs(value) >= 1_000_000:
+        return f"{value / 1_000_000:,.2f}M"
+    if abs(value) >= 1_000:
+        return f"{value / 1_000:,.2f}K"
+    return f"{value:,.2f}"
+
+
 def format_value(value: float, unit: str, compact: bool = False) -> str:
+    """Format a value with its unit, optionally in compact (K/M) notation."""
     if math.isnan(value):
         return "N/A"
-    if compact and abs(value) >= 1_000_000:
-        return f"{value / 1_000_000:,.2f}M"
-    if compact and abs(value) >= 1_000:
-        return f"{value / 1_000:,.2f}K"
+    # Unit-specific formatting first to preserve currency symbols and conventions
     if unit == "$":
-        return f"${value:,.2f}"
+        return f"${_compact_number(value) if compact else f'{value:,.2f}'}"
     if unit == "$ billions":
-        return f"${value:,.1f}B"
+        return f"${value:,.1f}B"  # billions displayed as B, no compaction
     if unit == "%":
         return f"{value:,.2f}%"
     if unit == "claims":
         return f"{value:,.0f}"
-    return f"{value:,.2f}"
+    if unit == "points":
+        return f"{value:,.2f}"  # index levels shown with full precision
+    if unit == "index":
+        return f"{value:,.2f}"
+    # Generic fallback
+    return _compact_number(value) if compact else f"{value:,.2f}"
 
 
 def format_change(value: float, change_mode: str) -> str:
@@ -378,20 +390,25 @@ def make_line_figure(
     metrics: dict[str, float | pd.Timestamp],
 ) -> go.Figure:
     color = chart_color(metrics)
+    change_mode = getattr(indicator, "change_mode", "percent")
+    # Only fill for level/price series (percent change mode), not rates/spreads (points mode)
+    use_fill = change_mode == "percent"
     figure = go.Figure(
         go.Scatter(
             x=visible.index,
             y=visible.values,
             mode="lines",
             line={"color": color, "width": 1.45},
-            fill="tozeroy",
+            fill="tozeroy" if use_fill else None,
             fillcolor=(
-                "rgba(95, 158, 104, 0.07)"
+                "rgba(95, 158, 104, 0.05)"
                 if color == POSITIVE
-                else "rgba(185, 87, 81, 0.07)"
+                else "rgba(185, 87, 81, 0.05)"
                 if color == NEGATIVE
-                else "rgba(120, 146, 168, 0.06)"
-            ),
+                else "rgba(120, 146, 168, 0.04)"
+            )
+            if use_fill
+            else None,
             hovertemplate=(
                 f"<b>{indicator.name}</b><br>"
                 f"%{{x|%b %d, %Y}}<br>%{{y:,.2f}} {indicator.unit}<extra></extra>"
@@ -508,13 +525,17 @@ def render_grid(
                     render_indicator(indicator, data[indicator.key], start, end)
 
 
+# Explicitly curated snapshot indicators (order matters)
+SNAPSHOT_KEYS = ("^GSPC", "^IXIC", "^VIX", "GC=F")
+
+
 def render_snapshot(
     indicators: tuple[Indicator, ...],
     data: dict[str, pd.Series],
 ) -> None:
-    available = [indicator for indicator in indicators if indicator.key in data][:4]
-    columns = st.columns(4)
-    for column, indicator in zip(columns, available):
+    snapshot_indicators = [ind for ind in indicators if ind.key in SNAPSHOT_KEYS and ind.key in data]
+    columns = st.columns(len(snapshot_indicators))
+    for column, indicator in zip(columns, snapshot_indicators):
         metrics = latest_metrics(data[indicator.key], getattr(indicator, "change_mode", "percent"))
         column.metric(
             indicator.name.replace(" Index", "").replace(" Futures", ""),
@@ -562,24 +583,6 @@ def render_comparison_chart(comparison: pd.DataFrame) -> None:
 
 
 inject_terminal_css()
-st.markdown(
-    f"""
-    <div class="terminal-header">
-        <div class="brand-lockup">
-            <div class="brand-mark">MT</div>
-            <div>
-                <div class="brand-name">Macro Terminal</div>
-                <div class="brand-sub">US ECONOMY / MARKETS / EQUITIES</div>
-            </div>
-        </div>
-        <div class="market-status">
-            <span class="status-dot"></span>
-            Observation window through · {date.today().strftime("%d %b %Y")}
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
 
 control_columns = st.columns([2.6, 1.2, 0.8], vertical_alignment="bottom")
 with control_columns[0]:
@@ -606,12 +609,32 @@ if range_start > range_end:
     st.error("The start date must be before the end date.")
     st.stop()
 
+# Header with dynamic end date
+st.markdown(
+    f"""
+    <div class="terminal-header">
+        <div class="brand-lockup">
+            <div class="brand-mark">MT</div>
+            <div>
+                <div class="brand-name">Macro Terminal</div>
+                <div class="brand-sub">US ECONOMY / MARKETS / EQUITIES</div>
+            </div>
+        </div>
+        <div class="market-status">
+            <span class="status-dot"></span>
+            Observation window through · {range_end.strftime("%d %b %Y")}
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 with st.spinner("Synchronizing economic and market feeds..."):
-    macro_data, macro_errors = fetch_macro_data(HISTORY_START)
+    macro_data, macro_errors = fetch_macro_data(HISTORY_START, range_end)
 
     market_tickers = tuple(indicator.key for indicator in MARKET_INDICATORS)
     try:
-        market_frame = fetch_yahoo_prices(market_tickers, HISTORY_START)
+        market_frame = fetch_yahoo_prices(market_tickers, HISTORY_START, range_end)
         market_data, market_errors = frame_to_series(market_frame, MARKET_INDICATORS)
     except Exception as exc:
         logger.exception("market_data_fetch_failed")
@@ -623,7 +646,7 @@ with st.spinner("Synchronizing economic and market feeds..."):
         for ticker, name in TOP_COMPANY_TICKERS.items()
     ]
     try:
-        company_frame = fetch_yahoo_prices(company_tickers, HISTORY_START)
+        company_frame = fetch_yahoo_prices(company_tickers, HISTORY_START, range_end)
         company_data, company_errors = frame_to_series(company_frame, company_indicators)
     except Exception as exc:
         logger.exception("company_data_fetch_failed")
