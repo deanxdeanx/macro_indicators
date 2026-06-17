@@ -529,11 +529,22 @@ def render_grid(
 SNAPSHOT_KEYS = ("^GSPC", "^IXIC", "^VIX", "GC=F")
 
 
+def snapshot_indicators_with_data(
+    indicators: tuple[Indicator, ...],
+    data: dict[str, pd.Series],
+) -> list[Indicator]:
+    return [ind for ind in indicators if ind.key in SNAPSHOT_KEYS and ind.key in data]
+
+
 def render_snapshot(
     indicators: tuple[Indicator, ...],
     data: dict[str, pd.Series],
 ) -> None:
-    snapshot_indicators = [ind for ind in indicators if ind.key in SNAPSHOT_KEYS and ind.key in data]
+    snapshot_indicators = snapshot_indicators_with_data(indicators, data)
+    if not snapshot_indicators:
+        st.warning("Market snapshot is unavailable because no market price data was returned.")
+        return
+
     columns = st.columns(len(snapshot_indicators))
     for column, indicator in zip(columns, snapshot_indicators):
         metrics = latest_metrics(data[indicator.key], getattr(indicator, "change_mode", "percent"))
