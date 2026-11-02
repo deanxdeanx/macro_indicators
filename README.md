@@ -1,20 +1,56 @@
-# Macroeconomic Dashboard
+# Macro Terminal
 
-An interactive Streamlit dashboard for monitoring US macroeconomic indicators,
-major markets, and a representative basket of 20 large-cap companies. It
-supports custom date ranges, normalized stock comparisons, CSV exports,
-latest-value metrics, previous-period changes, YTD changes, caching, retries,
-manual refreshes, response validation, and frequency-aware freshness warnings.
+A static dashboard for US macroeconomic indicators, major markets, and a
+representative basket of 20 large-cap companies. The page is plain HTML, CSS,
+and JavaScript. It reads JSON files that a Python script refreshes on a
+schedule. Nothing in the browser calls FRED or Yahoo Finance, which is what
+made the old Streamlit Community Cloud app hang on
+"Synchronizing economic and market feeds...".
 
-## Data sources
+The original Streamlit app is still in the repo (`app.py`) for local use. It
+is not the deployment path.
 
-- **FRED public CSV endpoint**: unemployment, CPI, real GDP growth, M2, Treasury
-  spread, initial jobless claims, and the effective federal funds rate.
-- **Yahoo Finance via `yfinance`**: S&P 500, Nasdaq Composite, Bitcoin, VIX,
-  gold futures, WTI crude oil futures, and company stock prices.
+## What you see
 
-No API key is required. The FRED CSV endpoint and Yahoo Finance data are free,
-but both services may impose rate limits or occasionally be unavailable.
+- US economy: unemployment, CPI inflation, real GDP growth, M2, the 10Y–2Y
+  spread, the 10-year yield, initial claims, the federal funds rate, and
+  consumer sentiment.
+- Markets: S&P 500, Nasdaq Composite, Bitcoin, VIX, gold futures, and WTI.
+- Equities: the 20-stock basket, with a normalized comparison (window start =
+  100) and one chart per selected company.
+- Latest value, previous-period change, and year-to-date change.
+- A custom date range, CSV export, and frequency-aware stale warnings.
+- The dark Macro Terminal layout, including on a phone.
+
+Previous-period change compares the latest observation with the one before it.
+Rates and spreads use percentage points (`pp`). Levels and prices use percent.
+Year-to-date change uses the first observation in that series' current
+calendar year. Metrics use every observation through the selected end date,
+not only the points inside the chart window. That matches the Streamlit app.
+
+## How the data gets there
+
+```text
+FRED CSV ─┐
+          ├─ build_data.py ─ site/data/catalog.json
+Yahoo chart API ─┘            site/data/series/*.json
+                                      │
+                                      ▼
+                               site/index.html
+```
+
+`build_data.py` fetches each series on its own, with a 12 second timeout and
+two attempts. One failure does not cancel the others. If a fetch fails and a
+previous file has observations, that file is left untouched and the catalog
+marks the series `preserved` with the error and the last successful
+`fetched_at`. A failed fetch never replaces good observations with an empty
+list. Each successful series records `fetched_at`. The catalog records
+`last_attempt_at` for every series.
+
+FRED still comes from the public CSV endpoint. Yahoo comes from the chart API
+through `requests`, not `yfinance`, so a stuck client retry cannot hold the
+job open. No API key is required. Both services can rate-limit or go down;
+the last good snapshot stays on the site.
 
 ### Indicator definitions
 
@@ -36,73 +72,147 @@ but both services may impose rate limits or occasionally be unavailable.
 - WTI Crude Oil Futures: `CL=F`
 
 The GDP series is already an annualized real-GDP growth rate. The M2 series is
-the active monthly, seasonally adjusted series. Replacing either with a level
-series without an explicit growth transformation would mislabel the chart.
+the active monthly, seasonally adjusted series. The company list is the basket
+in `data_sources.py`. Market-cap rankings move, so review that list when the
+names should change.
 
-The top-company list is a representative basket defined in
-`data_sources.py`. Market-cap rankings change frequently, so review the list
-periodically if exact current rankings are required.
-
-## Setup
+## Run the site locally
 
 From the repository root:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -r requirements.txt
+python -m pip install -r requirements-data.txt
+python build_data.py
+python -m http.server 8000 -d site
 ```
 
-## Run
+Open http://localhost:8000. `build_data.py` writes `site/data/`. The committed
+snapshot is enough to preview the page if you skip the fetch. Re-running the
+script refreshes whatever sources answer and keeps the previous file for any
+source that does not.
+
+Useful flags:
 
 ```bash
-streamlit run app.py
+python build_data.py --timeout 12 --workers 6
+python build_data.py --start 2020-01-01 --end 2026-11-02
 ```
-
-Use the observation-window control to choose a custom date range. The **Refresh
-data** button clears Streamlit's data cache and downloads fresh observations.
-FRED responses are cached for 12 hours and Yahoo Finance responses for 6 hours.
-
-## Architecture
-
-- `app.py` defines the Streamlit interface, charts, metrics, controls, and
-  source-error presentation.
-- `data_sources.py` owns indicator metadata, source requests, retries, caching,
-  response validation, transformations, and freshness checks.
-- FRED indicators are fetched concurrently and isolated from one another.
-  Yahoo tickers are fetched in batches to reduce request volume.
-- Source failures are logged and converted to concise dashboard messages.
-
-## Notes
-
-- Previous-period change compares the latest observation with the immediately
-  preceding observation. Rates and growth rates show percentage-point changes;
-  levels and prices show percentage changes.
-- YTD change compares the latest observation with the first available
-  observation in its current calendar year.
-- The dashboard catches failures per indicator where possible, so a temporary
-  issue with one source does not prevent other charts from loading.
-- FRED and Yahoo requests retry transient failures up to three times. Yahoo
-  tickers are fetched in a single batch per dashboard section to minimize
-  requests and reduce rate-limit pressure.
-- Freshness warnings compare the latest observation date with a threshold suited
-  to its daily, weekly, monthly, or quarterly frequency. Observation dates are
-  not publication timestamps, so the thresholds are deliberately conservative.
-- Data quality validation rejects malformed source responses, but it does not
-  automatically reject statistical outliers because legitimate macroeconomic
-  shocks can be extreme.
-
-## Troubleshooting
-
-- If one source is temporarily unavailable or rate-limits a request, use
-  **Refresh data** after waiting a few minutes.
-- If imports fail, confirm the virtual environment is active and reinstall
-  `requirements.txt`.
-- A stale warning means the latest observation is older than expected for that
-  series frequency; it does not necessarily mean the source request failed.
 
 ## Tests
 
 ```bash
+python -m pip install -r requirements-data.txt
 python -m unittest -v
 ```
+
+GitHub Actions runs the same command on every push and pull request
+(`.github/workflows/tests.yml`).
+
+## Refresh the data on a schedule
+
+`.github/workflows/refresh-data.yml` runs every day at 11:30 UTC and whenever
+someone starts it by hand. It installs `requirements-data.txt`, runs
+`python build_data.py`, and commits `site/data` only when a file changed.
+A push made with the workflow token does not start another workflow, so the
+same run also deploys GitHub Pages.
+
+### Manual refresh
+
+1. Open the repository on GitHub.
+2. Click **Actions**.
+3. Click **Refresh data** in the left sidebar.
+4. Click **Run workflow**.
+5. Choose branch **main**, then click **Run workflow** again.
+
+The run commits to the branch you select. Use `main` so the published site
+picks up the new snapshot. If `main` has a ruleset that blocks direct pushes,
+allow `github-actions[bot]` to push, or the commit step will fail and the
+existing snapshot will stay as it is.
+
+## Deploy
+
+The site is the `site/` directory. Paths are relative, so it works at a domain
+root (Vercel) and at a project path such as
+`https://deanxdeanx.github.io/macro_indicators/` (GitHub Pages).
+
+### GitHub Pages
+
+This is already wired to a workflow. One repository setting is required
+because GitHub will not enable Pages from a workflow file alone.
+
+1. Merge this change to `main`.
+2. On GitHub, open **Settings → Pages**.
+3. Under **Build and deployment**, set **Source** to **GitHub Actions**.
+4. Open **Actions → Deploy GitHub Pages**. If a run is not already green,
+   click **Run workflow** on branch `main`.
+5. When the run finishes, the site URL is on the workflow summary and under
+   **Settings → Pages**. For this repository it is
+   `https://deanxdeanx.github.io/macro_indicators/`.
+
+Pushes to `main` that change `site/` deploy through
+`.github/workflows/pages.yml`. The daily data job deploys from the same run
+that commits the snapshot, so Pages updates even though that bot push does
+not start `pages.yml`.
+
+Until step 3 is done, the deploy job fails with a message that Pages must be
+enabled and set to GitHub Actions. The data commit in the refresh job still
+succeeds. Re-run **Deploy GitHub Pages** after changing the setting.
+
+### Vercel
+
+1. Go to [vercel.com/new](https://vercel.com/new) and import
+   `deanxdeanx/macro_indicators`.
+2. Leave the root directory as the repository root. Do not set it to `site`.
+3. Framework preset **Other**, install command empty, build command empty,
+   output directory `site`. `vercel.json` already sets those. If the import
+   screen overrides them, put the values back.
+4. Deploy. There are no environment variables.
+
+Vercel's Git integration deploys `main` on every commit, including the daily
+data commit. The data responses are cached for five minutes
+(`Cache-Control` on `/data/*`). Reload the page after a refresh if a chart
+still looks old; the **Reload** button does that.
+
+You can use Pages, Vercel, or both. They read the same `site/` files.
+
+## Optional Streamlit app
+
+`app.py` and `data_sources.py` still run locally. Caching lives in `app.py`
+(`st.cache_data`) so the data modules do not import Streamlit.
+
+```bash
+python -m pip install -r requirements.txt
+streamlit run app.py
+```
+
+`requirements.txt` is the full local app (Streamlit, Plotly, pandas,
+requests, yfinance). `requirements-data.txt` is the snapshot job and the unit
+tests. Do not point Streamlit Community Cloud at this repo if the goal is a
+page that loads: that host is what hung on the Yahoo fetch.
+
+## Layout
+
+- `build_data.py` fetches every series and writes `site/data/`.
+- `data_sources.py` holds indicator metadata, FRED and Yahoo requests,
+  validation, transforms, and freshness rules.
+- `site/` is the static dashboard (`index.html`, `styles.css`, `app.js`,
+  `data/`).
+- `.github/workflows/refresh-data.yml` refreshes and deploys.
+- `.github/workflows/pages.yml` deploys the site on ordinary pushes.
+- `.github/workflows/tests.yml` runs the unit tests.
+- `vercel.json` tells Vercel to publish `site/` with an empty build.
+- `app.py` is the optional local Streamlit dashboard.
+
+## Troubleshooting
+
+- A preserved or stale banner means the latest observation is older than
+  expected for that frequency, or the last refresh failed and the previous
+  file was kept. It does not mean the page failed to load.
+- If every series fails on a brand-new checkout with an empty `site/data`,
+  `build_data.py` exits with status 1 and does not pretend there is data.
+  Re-run it when the sources answer.
+- If the Pages deploy is red, check **Settings → Pages → Source** is
+  **GitHub Actions**, then re-run **Deploy GitHub Pages**.
+- If the data workflow cannot push, `main` is blocking the Actions bot.

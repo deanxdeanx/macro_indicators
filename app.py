@@ -11,14 +11,18 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from data_sources import (
+    FRED_CACHE_TTL,
     MACRO_INDICATORS,
     MARKET_INDICATORS,
     TOP_COMPANY_TICKERS,
+    YAHOO_CACHE_TTL,
     Indicator,
+    company_indicators as load_company_indicators,
     fetch_macro_data,
     fetch_yahoo_prices,
     frame_to_series,
     latest_metrics,
+    observation_window,
     series_freshness,
 )
 
@@ -32,8 +36,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-HISTORY_START = date(date.today().year - 6, 1, 1)
-DEFAULT_START = date(date.today().year - 5, 1, 1)
+HISTORY_START, DEFAULT_START, TODAY = observation_window()
 CHART_HEIGHT = 235
 CHART_MARGIN = {"l": 4, "r": 8, "t": 8, "b": 4}
 POSITIVE = "#5f9e68"
@@ -555,6 +558,16 @@ def render_snapshot(
         )
 
 
+@st.cache_data(ttl=FRED_CACHE_TTL, show_spinner=False)
+def load_macro_data(start: date, end: date):
+    return fetch_macro_data(start, end)
+
+
+@st.cache_data(ttl=YAHOO_CACHE_TTL, show_spinner=False)
+def load_yahoo_prices(tickers: tuple[str, ...], start: date, end: date):
+    return fetch_yahoo_prices(tickers, start, end)
+
+
 def render_comparison_chart(comparison: pd.DataFrame) -> None:
     figure = go.Figure()
     for index, column in enumerate(comparison):
@@ -599,9 +612,9 @@ control_columns = st.columns([2.6, 1.2, 0.8], vertical_alignment="bottom")
 with control_columns[0]:
     selected_range = st.date_input(
         "Observation window",
-        value=(DEFAULT_START, date.today()),
+        value=(DEFAULT_START, TODAY),
         min_value=HISTORY_START,
-        max_value=date.today(),
+        max_value=TODAY,
     )
 with control_columns[1]:
     st.caption("FRED CACHE 12H · YAHOO CACHE 6H")
@@ -642,7 +655,7 @@ st.markdown(
 
 with st.spinner("Synchronizing economic and market feeds..."):
     try:
-        macro_data, macro_errors = fetch_macro_data(HISTORY_START, range_end)
+        macro_data, macro_errors = load_macro_data(HISTORY_START, range_end)
     except Exception as exc:
         logger.exception("macro_data_fetch_failed")
         macro_data = {}
@@ -650,19 +663,16 @@ with st.spinner("Synchronizing economic and market feeds..."):
 
     market_tickers = tuple(indicator.key for indicator in MARKET_INDICATORS)
     try:
-        market_frame = fetch_yahoo_prices(market_tickers, HISTORY_START, range_end)
+        market_frame = load_yahoo_prices(market_tickers, HISTORY_START, range_end)
         market_data, market_errors = frame_to_series(market_frame, MARKET_INDICATORS)
     except Exception as exc:
         logger.exception("market_data_fetch_failed")
         market_data, market_errors = {}, {ticker: str(exc) for ticker in market_tickers}
 
     company_tickers = tuple(TOP_COMPANY_TICKERS)
-    company_indicators = [
-        Indicator(ticker, f"{name} ({ticker})", "Yahoo Finance", "$", "Daily")
-        for ticker, name in TOP_COMPANY_TICKERS.items()
-    ]
+    company_indicators = list(load_company_indicators())
     try:
-        company_frame = fetch_yahoo_prices(company_tickers, HISTORY_START, range_end)
+        company_frame = load_yahoo_prices(company_tickers, HISTORY_START, range_end)
         company_data, company_errors = frame_to_series(company_frame, company_indicators)
     except Exception as exc:
         logger.exception("company_data_fetch_failed")

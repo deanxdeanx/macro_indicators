@@ -3,22 +3,32 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from io import StringIO
 import logging
+import math
 import time
 from typing import Iterable
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 import pandas as pd
 import requests
-import streamlit as st
-import yfinance as yf
 
 
 FRED_CSV_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv"
 FRED_CACHE_TTL = 60 * 60 * 12
 YAHOO_CACHE_TTL = 60 * 60 * 6
+YAHOO_CHART_HOSTS = (
+    "https://query1.finance.yahoo.com",
+    "https://query2.finance.yahoo.com",
+)
+YAHOO_CHART_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json",
+}
 MAX_FETCH_ATTEMPTS = 3
 FRESHNESS_THRESHOLDS_DAYS = {
     "Daily": 7,
@@ -155,6 +165,25 @@ TOP_COMPANY_TICKERS = {
 }
 
 
+def observation_window(today: date | None = None) -> tuple[date, date, date]:
+    """Return ``(history_start, default_view_start, today)``.
+
+    The fetch keeps six calendar years. The default chart window is the most
+    recent five, which leaves the earlier year available for year-over-year
+    inflation once the level series is transformed.
+    """
+    today = today or date.today()
+    return date(today.year - 6, 1, 1), date(today.year - 5, 1, 1), today
+
+
+def company_indicators() -> tuple[Indicator, ...]:
+    """Indicators for the representative large-cap basket, in display order."""
+    return tuple(
+        Indicator(ticker, f"{name} ({ticker})", "Yahoo Finance", "$", "Daily")
+        for ticker, name in TOP_COMPANY_TICKERS.items()
+    )
+
+
 def _normalize_series(series: pd.Series, name: str) -> pd.Series:
     series = pd.to_numeric(series, errors="coerce").dropna()
     series.index = pd.to_datetime(series.index).tz_localize(None)
@@ -231,8 +260,16 @@ def _request_error_message(source: str, item: str, exc: requests.RequestExceptio
     return f"{source} could not fetch {item}. Check the connection and try refreshing the data."
 
 
-@st.cache_data(ttl=FRED_CACHE_TTL, show_spinner=False)
-def fetch_fred_series(series_id: str, start_date: date, transform: str = "none", end_date: date | None = None) -> pd.Series:
+def fetch_fred_series(
+    series_id: str,
+    start_date: date,
+    transform: str = "none",
+    end_date: date | None = None,
+    *,
+    timeout: float = 60,
+    attempts: int = MAX_FETCH_ATTEMPTS,
+    retry_backoff: float = 1.0,
+) -> pd.Series:
     """Fetch one FRED series through the public CSV endpoint."""
     if end_date is None:
         end_date = date.today()
@@ -242,11 +279,13 @@ def fetch_fred_series(series_id: str, start_date: date, transform: str = "none",
         "coed": end_date.isoformat(),
     }
     url = f"{FRED_CSV_URL}?{urlencode(params)}"
-    for attempt in range(MAX_FETCH_ATTEMPTS):
+    request_timeout = (min(5.0, timeout), timeout)
+    total_attempts = max(1, attempts)
+    for attempt in range(total_attempts):
         try:
             response = requests.get(
                 url,
-                timeout=60,
+                timeout=request_timeout,
                 headers={"User-Agent": "macro_indicators/1.0"},
             )
             response.raise_for_status()
@@ -258,9 +297,9 @@ def fetch_fred_series(series_id: str, start_date: date, transform: str = "none",
                 attempt + 1,
                 type(exc).__name__,
             )
-            if attempt == MAX_FETCH_ATTEMPTS - 1:
+            if attempt == total_attempts - 1:
                 raise DataSourceError(_request_error_message("FRED", series_id, exc)) from exc
-            time.sleep(2**attempt)
+            time.sleep(retry_backoff * (2**attempt))
 
     try:
         frame = pd.read_csv(StringIO(response.text))
@@ -291,9 +330,166 @@ def _extract_close_prices(download: pd.DataFrame, tickers: list[str]) -> pd.Data
     return close.sort_index().dropna(how="all")
 
 
-@st.cache_data(ttl=YAHOO_CACHE_TTL, show_spinner=False)
+def _has_finite_number(values: Iterable[object] | None) -> bool:
+    if not values:
+        return False
+    for value in values:
+        if value is None:
+            continue
+        try:
+            if math.isfinite(float(value)):
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
+
+
+def _yahoo_close_values(indicators: dict) -> list | None:
+    """Prefer adjusted closes, matching the adjusted prices the dashboard charts."""
+    adj_groups = indicators.get("adjclose") or []
+    quote_groups = indicators.get("quote") or []
+    adjusted = adj_groups[0].get("adjclose") if adj_groups and isinstance(adj_groups[0], dict) else None
+    closes = quote_groups[0].get("close") if quote_groups and isinstance(quote_groups[0], dict) else None
+    if _has_finite_number(adjusted):
+        return list(adjusted)
+    if closes is not None:
+        return list(closes)
+    return None
+
+
+def parse_yahoo_chart(payload: dict, ticker: str) -> pd.Series:
+    """Convert one Yahoo v8 chart payload into a daily adjusted-close series."""
+    if not isinstance(payload, dict) or not isinstance(payload.get("chart"), dict):
+        raise DataSourceError(f"Yahoo Finance returned an invalid response for {ticker}.")
+    chart = payload["chart"]
+    error = chart.get("error")
+    if error:
+        if isinstance(error, dict):
+            description = error.get("description") or error.get("code") or "request failed"
+        else:
+            description = str(error)
+        lowered = str(description).lower()
+        if "rate limit" in lowered or "too many" in lowered:
+            raise DataSourceError(
+                f"Yahoo Finance rate-limited the request for {ticker}. Try again later."
+            )
+        raise DataSourceError(f"Yahoo Finance rejected the request for {ticker} ({description}).")
+
+    results = chart.get("result") or []
+    if not results or not isinstance(results[0], dict):
+        raise DataSourceError(f"Yahoo Finance returned no price data for {ticker}.")
+    result = results[0]
+    timestamps = result.get("timestamp") or []
+    indicators = result.get("indicators") if isinstance(result.get("indicators"), dict) else {}
+    closes = _yahoo_close_values(indicators)
+    if not timestamps or closes is None or len(closes) != len(timestamps):
+        raise DataSourceError(f"Yahoo Finance returned no price data for {ticker}.")
+
+    index = pd.to_datetime(list(timestamps), unit="s", utc=True).tz_convert(None).normalize()
+    series = _normalize_series(pd.Series(list(closes), index=index), ticker)
+    try:
+        return _validate_series(series, ticker)
+    except ValueError as exc:
+        raise DataSourceError(str(exc)) from exc
+
+
+def _yahoo_crumb(session: requests.Session, timeout: tuple[float, float]) -> str | None:
+    """Best-effort crumb for hosts that refuse anonymous chart requests."""
+    try:
+        session.get("https://fc.yahoo.com", timeout=timeout)
+        response = session.get(
+            "https://query1.finance.yahoo.com/v1/test/getcrumb",
+            timeout=timeout,
+        )
+    except requests.RequestException:
+        return None
+    crumb = response.text.strip()
+    if response.ok and crumb and not crumb.startswith("{") and len(crumb) < 64:
+        return crumb
+    return None
+
+
+def fetch_yahoo_chart_series(
+    ticker: str,
+    start_date: date,
+    end_date: date | None = None,
+    *,
+    timeout: float = 12,
+    attempts: int = 2,
+    retry_backoff: float = 0.4,
+) -> pd.Series:
+    """Fetch one Yahoo series from the chart API with a hard timeout.
+
+    Each ticker is independent, so one rate limit or timeout cannot stall the
+    other symbols the way a single batched client call can.
+    """
+    if end_date is None:
+        end_date = date.today()
+    period1 = int(datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc).timestamp())
+    period2 = int(
+        datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc).timestamp()
+    )
+    params = {
+        "period1": period1,
+        "period2": period2,
+        "interval": "1d",
+        "includeAdjustedClose": "true",
+    }
+    request_timeout = (min(5.0, timeout), timeout)
+    session = requests.Session()
+    session.headers.update(YAHOO_CHART_HEADERS)
+    crumb: str | None = None
+    last_error: Exception | None = None
+    total_attempts = max(1, attempts)
+    encoded = quote(ticker, safe="")
+
+    for attempt in range(total_attempts):
+        for host in YAHOO_CHART_HOSTS:
+            url = f"{host}/v8/finance/chart/{encoded}"
+            try:
+                response = session.get(url, params=params, timeout=request_timeout)
+                if response.status_code in (401, 403) and crumb is None:
+                    crumb = _yahoo_crumb(session, request_timeout)
+                    if crumb:
+                        response = session.get(
+                            url,
+                            params={**params, "crumb": crumb},
+                            timeout=request_timeout,
+                        )
+                if response.status_code == 429:
+                    raise requests.HTTPError(response=response)
+                response.raise_for_status()
+                try:
+                    payload = response.json()
+                except ValueError as exc:
+                    raise DataSourceError(
+                        f"Yahoo Finance returned unreadable data for {ticker}."
+                    ) from exc
+                return parse_yahoo_chart(payload, ticker)
+            except (DataSourceError, requests.RequestException) as exc:
+                last_error = exc
+                logger.warning(
+                    "yahoo_chart_request_failed ticker=%s attempt=%s host=%s error=%s",
+                    ticker,
+                    attempt + 1,
+                    host,
+                    type(exc).__name__,
+                )
+        if attempt == total_attempts - 1:
+            break
+        time.sleep(retry_backoff * (2**attempt))
+
+    if isinstance(last_error, DataSourceError):
+        raise last_error
+    if isinstance(last_error, requests.RequestException):
+        raise DataSourceError(_request_error_message("Yahoo Finance", ticker, last_error)) from last_error
+    raise DataSourceError(f"Yahoo Finance returned no price data for {ticker}.")
+
+
 def fetch_yahoo_prices(tickers: tuple[str, ...], start_date: date, end_date: date | None = None) -> pd.DataFrame:
     """Fetch adjusted historical close prices from Yahoo Finance in one batch."""
+    import yfinance as yf
+
     if end_date is None:
         end_date = date.today()
     for attempt in range(MAX_FETCH_ATTEMPTS):
