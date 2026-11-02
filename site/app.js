@@ -393,7 +393,7 @@ function formatHoverValue(value, unit) {
   if (unit === "$") return `$${groupedNumber(value, 2)}`;
   if (unit === "$ billions") return `$${groupedNumber(value, 1)}B`;
   if (unit === "claims") return groupedNumber(value, 0);
-  if (unit === "index") return `${groupedNumber(value, 1)} index`;
+  if (unit === "index") return `${groupedNumber(value, 1)} (start = 100)`;
   return groupedNumber(value, 2);
 }
 
@@ -404,19 +404,6 @@ function niceStep(span, count) {
   const base = rough / 10 ** exp;
   const nice = base <= 1 ? 1 : base <= 2 ? 2 : base <= 5 ? 5 : 10;
   return nice * 10 ** exp;
-}
-
-function yExtent(values) {
-  const finite = values.filter((value) => Number.isFinite(value));
-  if (!finite.length) return { low: 0, high: 1 };
-  let min = Math.min(...finite);
-  let max = Math.max(...finite);
-  if (min === max) {
-    const pad = Math.abs(min) * 0.12 || 1;
-    return { low: min - pad, high: max + pad };
-  }
-  const span = max - min;
-  return { low: min - span * 0.08, high: max + span * 0.14 };
 }
 
 function ticksBetween(low, high, step) {
@@ -437,15 +424,28 @@ function shrinkStep(step) {
   return smaller * 10 ** exp;
 }
 
-function yTicks(values, count) {
-  const { low, high } = yExtent(values);
-  let step = niceStep(high - low, count);
-  let ticks = ticksBetween(low, high, step);
+function yScale(values, count) {
+  const finite = values.filter((value) => Number.isFinite(value));
+  if (!finite.length) return { ticks: [0], step: 1, low: 0, high: 1 };
+  const min = Math.min(...finite);
+  const max = Math.max(...finite);
+  const span = Math.max(max - min, Math.abs(max) * 0.08, 1);
+  let step = niceStep(span, count);
+  let ticks = ticksBetween(min, max, step);
   if (ticks.length < 3) {
     step = shrinkStep(step);
-    ticks = ticksBetween(low, high, step);
+    ticks = ticksBetween(min, max, step);
   }
-  return { ticks, step, low, high };
+  if (min > 0) ticks = ticks.filter((tick) => tick !== 0);
+  if (!ticks.length) ticks = [min, max];
+  const first = ticks[0];
+  const last = ticks[ticks.length - 1];
+  return {
+    ticks,
+    step,
+    low: Math.min(min - span * 0.08, first - step * 0.6),
+    high: Math.max(max + span * 0.12, last + step * 0.28),
+  };
 }
 
 function dateTicks(dates, narrow) {
@@ -472,7 +472,7 @@ function dateTicks(dates, narrow) {
 function baseLayout(height, topMargin) {
   return {
     height,
-    margin: { l: 12, r: 16, t: topMargin, b: 12 },
+    margin: { l: 16, r: 20, t: topMargin, b: 52 },
     hovermode: "x unified",
     paper_bgcolor: "rgba(0,0,0,0)",
     plot_bgcolor: "rgba(0,0,0,0)",
@@ -503,9 +503,9 @@ function xAxis(dates) {
   };
 }
 
-function yAxis(values, unit, title) {
-  const { ticks, step, low, high } = yTicks(values, chartNarrow() ? 4 : 5);
-  const axis = {
+function yAxis(values, unit) {
+  const { ticks, step, low, high } = yScale(values, chartNarrow() ? 4 : 5);
+  return {
     side: "right",
     range: [low, high],
     autorange: false,
@@ -517,13 +517,24 @@ function yAxis(values, unit, title) {
     zeroline: false,
     showline: false,
     automargin: true,
-    ticklabelstandoff: 10,
+    ticklabelstandoff: 12,
     ticklabeloverflow: "allow",
   };
-  if (title) {
-    axis.title = { text: title, font: AXIS_FONT, standoff: 12 };
-  }
-  return axis;
+}
+
+function zeroLine(low, high, unit) {
+  if (unit !== "%" || !(low < 0 && high > 0)) return [];
+  return [{
+    type: "line",
+    xref: "paper",
+    x0: 0,
+    x1: 1,
+    yref: "y",
+    y0: 0,
+    y1: 0,
+    layer: "below",
+    line: { color: "#8fa3a3", width: 1.25 },
+  }];
 }
 
 function drawLine(entry, visible, metrics) {
@@ -548,11 +559,14 @@ function drawLine(entry, visible, metrics) {
         ? "rgba(185, 87, 81, 0.05)"
         : "rgba(120, 146, 168, 0.04)";
   }
+  const yValues = visible.map((row) => row[1]);
+  const y = yAxis(yValues, entry.unit);
   const layout = {
-    ...baseLayout(chartHeight("line"), 10),
+    ...baseLayout(chartHeight("line"), 14),
     showlegend: false,
     xaxis: xAxis(visible.map((row) => row[0])),
-    yaxis: yAxis(visible.map((row) => row[1]), entry.unit),
+    yaxis: y,
+    shapes: zeroLine(y.range[0], y.range[1], entry.unit),
   };
   Plotly.react(node, [trace], layout, PLOT_CONFIG);
 }
@@ -586,7 +600,18 @@ function drawComparison(seriesList) {
       itemwidth: 40,
     },
     xaxis: xAxis(dates),
-    yaxis: yAxis(values, "index", "Index"),
+    yaxis: yAxis(values, "index"),
+    annotations: [{
+      xref: "paper",
+      yref: "paper",
+      x: 1,
+      y: 1.01,
+      xanchor: "right",
+      yanchor: "bottom",
+      text: "Index (start = 100)",
+      showarrow: false,
+      font: { family: AXIS_FONT.family, size: 14, color: "#f2f6f6" },
+    }],
   };
   Plotly.react(node, traces, layout, PLOT_CONFIG);
 }
