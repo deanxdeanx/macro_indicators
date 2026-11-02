@@ -2,7 +2,6 @@ const POSITIVE = "#5f9e68";
 const NEGATIVE = "#b95751";
 const NEUTRAL = "#7892a8";
 const SERIES_COLORS = ["#7c91c9", "#a779c9", "#c47da5", "#d08c69", "#d8aa69", "#92a96e", "#5f9e68", "#63a0a0"];
-const SNAPSHOT_KEYS = ["^GSPC", "^IXIC", "^VIX", "GC=F"];
 const FRESHNESS_DAYS = { Daily: 7, Weekly: 16, Monthly: 75, Quarterly: 200 };
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const PLOT_CONFIG = { displaylogo: false, displayModeBar: false, responsive: true };
@@ -19,10 +18,9 @@ const state = {
   normalize: true,
 };
 
-const statusEl = () => document.getElementById("header-status");
+const asOfEl = () => document.getElementById("as-of");
 const bannerEl = () => document.getElementById("banner");
 const panelEl = () => document.getElementById("panel");
-const snapshotEl = () => document.getElementById("snapshot");
 const rangeMessageEl = () => document.getElementById("range-message");
 
 function escapeHtml(value) {
@@ -172,14 +170,7 @@ function groupEntries(group) {
 }
 
 function entriesFor(tab) {
-  const wanted = new Map();
-  for (const key of SNAPSHOT_KEYS) {
-    const entry = byKey().get(key);
-    if (entry) wanted.set(entry.key, entry);
-  }
-  const grouped = tab === "companies" ? groupEntries("companies") : groupEntries(tab);
-  for (const entry of grouped) wanted.set(entry.key, entry);
-  return [...wanted.values()];
+  return tab === "companies" ? groupEntries("companies") : groupEntries(tab);
 }
 
 function observationsOf(entry) {
@@ -220,44 +211,46 @@ async function ensure(entries) {
 }
 
 function showFatal(error) {
-  statusEl().textContent = "Snapshot unavailable";
+  const note = asOfEl();
+  if (note) note.textContent = "Snapshot unavailable";
   panelEl().innerHTML = `<p class="alert bad">${escapeHtml(error.message || String(error))}</p>`;
 }
 
+function snapshotAsOf() {
+  const generated = (state.catalog.generated_at || "").slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(generated)) return generated;
+  return state.catalog.history_end;
+}
+
 function setRangeFromCatalog() {
-  const today = todayISO();
   const startInput = document.getElementById("range-start");
-  const endInput = document.getElementById("range-end");
   const min = state.catalog.history_start;
-  const max = today > state.catalog.history_end ? today : state.catalog.history_end;
-  for (const input of [startInput, endInput]) {
-    input.min = min;
-    input.max = max;
-  }
+  state.end = snapshotAsOf();
+  const max = state.end;
+  startInput.min = min;
+  startInput.max = max;
   state.start = state.catalog.default_start || min;
-  state.end = today >= min ? today : state.catalog.history_end;
   if (state.start > state.end) state.start = min;
   startInput.value = state.start;
-  endInput.value = state.end;
 }
 
 function readRange() {
   const start = document.getElementById("range-start").value;
-  const end = document.getElementById("range-end").value;
+  const end = snapshotAsOf();
+  state.end = end;
   const message = rangeMessageEl();
-  if (!start || !end) {
+  if (!start) {
     message.hidden = false;
-    message.textContent = "Select both a start and end date.";
+    message.textContent = "Select a start date.";
     return false;
   }
   if (start > end) {
     message.hidden = false;
-    message.textContent = "The start date must be before the end date.";
+    message.textContent = "The start date must be on or before the snapshot date.";
     return false;
   }
   message.hidden = true;
   state.start = start;
-  state.end = end;
   return true;
 }
 
@@ -277,51 +270,6 @@ function renderBanners() {
     pieces.push(`<p class="alert bad">${missing.length} series have no saved observations.</p>`);
   }
   bannerEl().innerHTML = pieces.join("");
-}
-
-function snapshotTitle(name) {
-  return name.replace(" Index", "").replace(" Futures", "");
-}
-
-function renderSnapshot() {
-  const entries = SNAPSHOT_KEYS.map((key) => byKey().get(key)).filter(Boolean);
-  const ready = entries.filter((entry) => observationsOf(entry).length);
-  if (!ready.length) {
-    snapshotEl().innerHTML = `
-      <div class="eyebrow">Live overview</div>
-      <h2 class="section-title">Market snapshot</h2>
-      <p class="section-copy">Latest observations and previous-period moves across major risk assets.</p>
-      <p class="alert warn">Market snapshot is unavailable because no market price data was returned.</p>`;
-    return;
-  }
-  const cards = entries.map((entry) => {
-    const rows = rowsThrough(observationsOf(entry), state.end);
-    if (!rows.length) {
-      return `<article class="metric"><span class="kicker">${escapeHtml(snapshotTitle(entry.name))}</span><span class="value">N/A</span></article>`;
-    }
-    const metrics = latestMetrics(rows, entry.change_mode);
-    return `
-      <article class="metric">
-        <span class="kicker">${escapeHtml(snapshotTitle(entry.name))}</span>
-        <span class="value">${escapeHtml(formatValue(metrics.latest, entry.unit, true))}</span>
-        <span class="delta ${deltaClass(metrics.previousChange)}">${escapeHtml(formatChange(metrics.previousChange, entry.change_mode))}</span>
-      </article>`;
-  }).join("");
-  snapshotEl().innerHTML = `
-    <div class="eyebrow">Live overview</div>
-    <h2 class="section-title">Market snapshot</h2>
-    <p class="section-copy">Latest observations and previous-period moves across major risk assets.</p>
-    <div class="snapshot-grid">${cards}</div>`;
-}
-
-function sectionCopy(tab) {
-  if (tab === "markets") {
-    return ["Cross-asset monitor", "Markets", "A compact view of US equities, volatility, crypto, energy, and precious metals."];
-  }
-  if (tab === "companies") {
-    return ["Large-cap monitor", "Top companies", "Representative basket of leading US-listed companies. Rankings change over time."];
-  }
-  return ["US economic regime", "Macro indicators", "Growth, inflation, labor, liquidity, rates, and the yield curve in one analytical grid."];
 }
 
 function chartElementId(entry) {
@@ -745,11 +693,6 @@ function comparisonMarkup(entries) {
 }
 
 function renderPanel() {
-  const [kicker, title, copy] = sectionCopy(state.tab);
-  const heading = `
-    <div class="eyebrow">${kicker}</div>
-    <h2 class="section-title">${title}</h2>
-    <p class="section-copy">${copy}</p>`;
   const libraryNote = typeof Plotly === "undefined"
     ? `<p class="alert warn">The chart library did not load. Values are still shown, but the lines cannot be drawn.</p>`
     : "";
@@ -764,7 +707,7 @@ function renderPanel() {
     const grid = selected.length
       ? `<div class="card-grid">${selected.map(cardMarkup).join("")}</div>`
       : `<p class="message">Select at least one company to display its chart.</p>`;
-    panelEl().innerHTML = `${heading}${companyToolbar(entries)}${libraryNote}${comparisonMarkup(entries)}${grid}`;
+    panelEl().innerHTML = `${companyToolbar(entries)}${libraryNote}${comparisonMarkup(entries)}${grid}`;
     bindCards(selected);
     if (state.normalize) {
       const normalized = [];
@@ -798,7 +741,7 @@ function renderPanel() {
   }
 
   const entries = groupEntries(state.tab);
-  panelEl().innerHTML = `${heading}${libraryNote}<div class="card-grid">${entries.map(cardMarkup).join("")}</div>`;
+  panelEl().innerHTML = `${libraryNote}<div class="card-grid">${entries.map(cardMarkup).join("")}</div>`;
   bindCards(entries);
 }
 
@@ -813,12 +756,9 @@ function draw() {
   if (!state.catalog || !readRange()) return;
   const scrollY = window.scrollY;
   renderBanners();
-  renderSnapshot();
   renderPanel();
   window.scrollTo(0, scrollY);
-  const endLabel = formatLong(state.end);
-  statusEl().textContent = `Observation window through · ${endLabel}`;
-  document.getElementById("snapshot-note").textContent = `Daily snapshot · updated ${formatStamp(state.catalog.generated_at)}`;
+  asOfEl().textContent = `Data as of ${formatLong(state.end)}`;
 }
 
 function selectTab(tab, options = {}) {
@@ -833,15 +773,12 @@ function selectTab(tab, options = {}) {
 
 async function activateTab(tab) {
   selectTab(tab);
-  statusEl().textContent = "Loading series…";
   await ensure(entriesFor(tab));
   draw();
 }
 
 function bindChrome() {
   document.getElementById("range-start").addEventListener("change", draw);
-  document.getElementById("range-end").addEventListener("change", draw);
-  document.getElementById("reload").addEventListener("click", () => window.location.reload());
   document.getElementById("controls").addEventListener("submit", (event) => event.preventDefault());
   const tabs = [...document.querySelectorAll("[role='tab']")];
   tabs.forEach((button) => {
@@ -873,7 +810,7 @@ async function init() {
     return;
   }
   setRangeFromCatalog();
-  statusEl().textContent = "Loading series…";
+  asOfEl().textContent = `Data as of ${formatLong(state.end)}`;
   await ensure(entriesFor(state.tab));
   draw();
   const rest = state.catalog.series.filter((entry) => !state.series.has(entry.key));

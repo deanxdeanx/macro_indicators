@@ -13,43 +13,24 @@
 </head>
 <body>
   <div class="page">
-    <header class="terminal-header">
-      <div class="brand-lockup">
-        <div class="brand-mark" aria-hidden="true">MT</div>
-        <div>
-          <div class="brand-name">Macro Terminal</div>
-          <div class="brand-sub">US ECONOMY / MARKETS / EQUITIES</div>
-        </div>
+    <header class="topbar">
+      <div class="tabs" role="tablist" aria-label="Dashboard sections">
+        <button id="tab-macro" type="button" role="tab" aria-selected="true" aria-controls="panel" data-tab="macro">Macro indicators</button>
+        <button id="tab-markets" type="button" role="tab" aria-selected="false" aria-controls="panel" data-tab="markets" tabindex="-1">Markets</button>
+        <button id="tab-companies" type="button" role="tab" aria-selected="false" aria-controls="panel" data-tab="companies" tabindex="-1">Top companies</button>
       </div>
-      <div class="market-status">
-        <span class="status-dot" aria-hidden="true"></span>
-        <span id="header-status">Loading snapshot…</span>
-      </div>
+      <form id="controls" class="range-lockup">
+        <p id="as-of" class="as-of">Loading…</p>
+        <label class="start-date">
+          <span>Start</span>
+          <input id="range-start" name="start" type="date" required>
+        </label>
+      </form>
     </header>
-
-    <form id="controls" class="controls">
-      <label>
-        <span>Start</span>
-        <input id="range-start" name="start" type="date" required>
-      </label>
-      <label>
-        <span>End</span>
-        <input id="range-end" name="end" type="date" required>
-      </label>
-      <button id="reload" class="btn primary" type="button">Reload</button>
-      <p id="snapshot-note" class="note">Daily snapshot · FRED and Yahoo Finance</p>
-    </form>
 
     <div id="banner" class="banner-stack" aria-live="polite"></div>
     <p id="range-message" class="message" hidden></p>
 
-    <section id="snapshot" aria-label="Market snapshot"></section>
-
-    <div class="tabs" role="tablist" aria-label="Dashboard sections">
-      <button id="tab-macro" type="button" role="tab" aria-selected="true" aria-controls="panel" data-tab="macro">Macro indicators</button>
-      <button id="tab-markets" type="button" role="tab" aria-selected="false" aria-controls="panel" data-tab="markets" tabindex="-1">Markets</button>
-      <button id="tab-companies" type="button" role="tab" aria-selected="false" aria-controls="panel" data-tab="companies" tabindex="-1">Top companies</button>
-    </div>
     <main id="panel" tabindex="-1"></main>
 
     <footer class="site-foot">
