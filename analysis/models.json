@@ -1,0 +1,23 @@
+{
+  "credit_cost": 1,
+  "trial_credits": 3,
+  "trial_days": 7,
+  "steps": [
+    {
+      "id": "extract",
+      "model": "google/gemini-2.0-flash-001",
+      "purpose": "Pull figures, guidance, and segment facts out of the filing and uploads.",
+      "max_tokens": 1800,
+      "input_per_million_usd": 0.1,
+      "output_per_million_usd": 0.4
+    },
+    {
+      "id": "write",
+      "model": "anthropic/claude-3.5-haiku",
+      "purpose": "Write the valuation note from the extracted facts. This is the stronger of the two cheap models.",
+      "max_tokens": 2800,
+      "input_per_million_usd": 0.8,
+      "output_per_million_usd": 4.0
+    }
+  ]
+}

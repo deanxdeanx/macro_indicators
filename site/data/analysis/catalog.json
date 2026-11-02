@@ -1,0 +1,10 @@
+{
+  "tickers": [
+    {
+      "symbol": "SPCX",
+      "name": "SpaceX",
+      "file": "SPCX.json",
+      "history_start": "2026-06-12"
+    }
+  ]
+}

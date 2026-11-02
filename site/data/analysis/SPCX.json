@@ -1,0 +1,470 @@
+{
+  "symbol": "SPCX",
+  "name": "SpaceX",
+  "class_name": "Class A",
+  "exchange": "Nasdaq",
+  "cik": "1181412",
+  "history_start": "2026-06-12",
+  "ipo_date": "2026-06-12",
+  "ipo_price": {
+    "value": 135.0,
+    "source": "SEC 424B4 prospectus."
+  },
+  "fetched_at": "2026-11-02T09:23:44Z",
+  "prices": [
+    [
+      "2026-06-12",
+      160.949997
+    ],
+    [
+      "2026-06-15",
+      192.5
+    ],
+    [
+      "2026-06-16",
+      211.389999
+    ],
+    [
+      "2026-06-17",
+      191.820007
+    ],
+    [
+      "2026-06-18",
+      185.0
+    ],
+    [
+      "2026-06-22",
+      154.600006
+    ],
+    [
+      "2026-06-23",
+      156.110001
+    ],
+    [
+      "2026-06-24",
+      154.539993
+    ],
+    [
+      "2026-06-25",
+      153.0
+    ],
+    [
+      "2026-06-26",
+      153.229996
+    ],
+    [
+      "2026-06-29",
+      164.190002
+    ],
+    [
+      "2026-06-30",
+      170.860001
+    ],
+    [
+      "2026-07-01",
+      157.539993
+    ],
+    [
+      "2026-07-02",
+      162.0
+    ],
+    [
+      "2026-07-06",
+      160.419998
+    ],
+    [
+      "2026-07-07",
+      149.470001
+    ],
+    [
+      "2026-07-08",
+      148.300003
+    ],
+    [
+      "2026-07-09",
+      152.160004
+    ],
+    [
+      "2026-07-10",
+      145.300003
+    ],
+    [
+      "2026-07-13",
+      139.139999
+    ],
+    [
+      "2026-07-14",
+      136.080002
+    ],
+    [
+      "2026-07-15",
+      135.270004
+    ],
+    [
+      "2026-07-16",
+      131.110001
+    ],
+    [
+      "2026-07-17",
+      123.989998
+    ],
+    [
+      "2026-07-20",
+      119.849998
+    ],
+    [
+      "2026-07-21",
+      123.540001
+    ],
+    [
+      "2026-07-22",
+      115.260002
+    ],
+    [
+      "2026-07-23",
+      118.239998
+    ],
+    [
+      "2026-07-24",
+      115.07
+    ],
+    [
+      "2026-07-27",
+      113.5
+    ],
+    [
+      "2026-07-28",
+      116.410004
+    ],
+    [
+      "2026-07-29",
+      112.550003
+    ],
+    [
+      "2026-07-30",
+      112.199997
+    ],
+    [
+      "2026-07-31",
+      108.370003
+    ],
+    [
+      "2026-08-03",
+      114.529999
+    ],
+    [
+      "2026-08-04",
+      125.330002
+    ],
+    [
+      "2026-08-05",
+      108.269997
+    ],
+    [
+      "2026-08-06",
+      114.919998
+    ],
+    [
+      "2026-08-07",
+      133.110001
+    ],
+    [
+      "2026-08-10",
+      138.740005
+    ],
+    [
+      "2026-08-11",
+      133.289993
+    ],
+    [
+      "2026-08-12",
+      146.149994
+    ],
+    [
+      "2026-08-13",
+      141.289993
+    ],
+    [
+      "2026-08-14",
+      140.0
+    ],
+    [
+      "2026-08-17",
+      146.229996
+    ],
+    [
+      "2026-08-18",
+      143.339996
+    ],
+    [
+      "2026-08-19",
+      139.649994
+    ],
+    [
+      "2026-08-20",
+      134.0
+    ],
+    [
+      "2026-08-21",
+      136.970001
+    ],
+    [
+      "2026-08-24",
+      135.0
+    ],
+    [
+      "2026-08-25",
+      137.949997
+    ],
+    [
+      "2026-08-26",
+      139.630005
+    ],
+    [
+      "2026-08-27",
+      140.869995
+    ],
+    [
+      "2026-08-28",
+      141.5
+    ],
+    [
+      "2026-08-31",
+      143.690002
+    ],
+    [
+      "2026-09-01",
+      142.229996
+    ],
+    [
+      "2026-09-02",
+      140.710007
+    ],
+    [
+      "2026-09-03",
+      149.740005
+    ],
+    [
+      "2026-09-04",
+      147.949997
+    ],
+    [
+      "2026-09-08",
+      153.470001
+    ],
+    [
+      "2026-09-09",
+      147.550003
+    ],
+    [
+      "2026-09-10",
+      148.179993
+    ],
+    [
+      "2026-09-11",
+      151.210007
+    ],
+    [
+      "2026-09-14",
+      148.149994
+    ],
+    [
+      "2026-09-15",
+      143.490005
+    ],
+    [
+      "2026-09-16",
+      150.880005
+    ],
+    [
+      "2026-09-17",
+      154.809998
+    ],
+    [
+      "2026-09-18",
+      152.710007
+    ],
+    [
+      "2026-09-21",
+      151.850006
+    ],
+    [
+      "2026-09-22",
+      154.720001
+    ],
+    [
+      "2026-09-23",
+      148.360001
+    ],
+    [
+      "2026-09-24",
+      148.029999
+    ],
+    [
+      "2026-09-25",
+      148.679993
+    ],
+    [
+      "2026-09-28",
+      145.470001
+    ],
+    [
+      "2026-09-29",
+      149.240005
+    ],
+    [
+      "2026-09-30",
+      150.860001
+    ],
+    [
+      "2026-10-01",
+      148.070007
+    ],
+    [
+      "2026-10-02",
+      158.960007
+    ],
+    [
+      "2026-10-05",
+      171.089996
+    ],
+    [
+      "2026-10-06",
+      171.919998
+    ],
+    [
+      "2026-10-07",
+      167.600006
+    ],
+    [
+      "2026-10-08",
+      160.570007
+    ],
+    [
+      "2026-10-09",
+      162.570007
+    ],
+    [
+      "2026-10-12",
+      163.419998
+    ],
+    [
+      "2026-10-13",
+      156.539993
+    ],
+    [
+      "2026-10-14",
+      152.160004
+    ],
+    [
+      "2026-10-15",
+      148.619995
+    ],
+    [
+      "2026-10-16",
+      146.029999
+    ],
+    [
+      "2026-10-19",
+      147.960007
+    ],
+    [
+      "2026-10-20",
+      147.789993
+    ],
+    [
+      "2026-10-21",
+      159.309998
+    ],
+    [
+      "2026-10-22",
+      144.75
+    ],
+    [
+      "2026-10-23",
+      147.490005
+    ],
+    [
+      "2026-10-26",
+      146.899994
+    ],
+    [
+      "2026-10-27",
+      148.580002
+    ],
+    [
+      "2026-10-28",
+      145.229996
+    ],
+    [
+      "2026-10-29",
+      143.889999
+    ],
+    [
+      "2026-10-30",
+      134.720001
+    ]
+  ],
+  "earnings_releases": [
+    {
+      "date": "2026-08-04",
+      "period_end": "2026-08-04",
+      "label": "Earnings release (8-K item 2.02)",
+      "confirmed": true
+    },
+    {
+      "date": "2026-10-20",
+      "period_end": "2026-10-20",
+      "label": "Earnings release (8-K item 2.02)",
+      "confirmed": true
+    }
+  ],
+  "fundamentals": {
+    "description": {
+      "value": "Founded in 2002, SpaceX is the only company building the integrated hardware and software infrastructure of the future across space, connectivity, and AI. At our core, we are builders. We design, manufacture, launch, and operate products and services built on cutting-edge technologies, including the world\u2019s most advanced rockets and spacecraft. We safely and reliably transport astronauts, satellites, and other payloads on missions that benefit life on Earth.",
+      "source": "SEC 424B4 prospectus overview."
+    },
+    "market_cap": {
+      "value": 1110974041135.5,
+      "source": "Class A shares outstanding (8,246,541,218 as of 2026-10-15, 10-Q) times the 2026-10-30 close. Class B shares are excluded.",
+      "label": "Class A",
+      "display": "$1.11T"
+    },
+    "dividend_yield": {
+      "value": null,
+      "source": "SEC companyfacts has no per-share dividend fact for this filer. A zero yield was not assumed."
+    },
+    "pe_ttm": {
+      "value": null,
+      "source": "PE is not shown because TTM diluted EPS is missing or not positive."
+    },
+    "pe_ntm": {
+      "value": null,
+      "source": "No free forward-estimate source returned an NTM P/E. FMP is used only when FMP_API_KEY is set."
+    },
+    "eps_ttm": {
+      "value": null,
+      "source": "Quarterly diluted-EPS facts exist, but they are not four consecutive quarters, so TTM EPS is not shown."
+    },
+    "eps_ntm": {
+      "value": null,
+      "source": "No free forward-estimate source returned an NTM EPS."
+    },
+    "last_earnings_date": {
+      "value": "2026-10-20",
+      "source": "Filing date of the latest 8-K that includes item 2.02.",
+      "period_end": "2026-10-20",
+      "confirmed": true
+    },
+    "next_earnings_date": {
+      "value": null,
+      "source": "No confirmed or estimated next earnings date was found. An unconfirmed date would be labeled Expected.",
+      "confirmed": null
+    },
+    "ceo": {
+      "value": "Elon Musk",
+      "source": "SEC 424B4 prospectus."
+    }
+  },
+  "prompt": "Write a comprehensive equity research note on this company from the latest earnings release, the quarterly report, and management guidance. Give any documents uploaded with this request more weight than the snapshot, the prompt, or general knowledge. If a figure is not in those sources, write \"n/a\" instead of estimating it. Do not invent NTM earnings, a price target, or a consensus number.\n\nCover all of the following, in this order:\n\n1. Business overview and segments. What the company sells, how the segments are organized, and what management said changed this quarter.\n2. Discounted cash flow. State every key assumption in a table (growth, margins, reinvestment, discount rate, terminal value). Then show a sensitivity table of value per share against the discount rate and the terminal growth rate. If the cash-flow history is too short for a serious DCF, say so and still show the arithmetic with the assumptions labeled as assumptions.\n3. Comparable-company valuation. Name the peer set, the multiples used, and why each peer is or is not a fit. Show the implied range. Use \"n/a\" where a multiple is not available.\n4. Bull, base, and bear cases. One paragraph each, with the single assumption that moves the case.\n5. Risk factors. Include the ones management emphasized and any that the filing's own risk language flags as new.\n6. What to watch or confirm at the next earnings call. A short list of questions tied to guidance, segments, and the assumptions above.\n\nKeep the tone plain. Separate sourced facts from assumptions."
+}

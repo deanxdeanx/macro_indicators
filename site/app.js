@@ -693,6 +693,11 @@ function comparisonMarkup(entries) {
 }
 
 function renderPanel() {
+  if (state.tab === "analysis") {
+    purgeCharts(panelEl());
+    renderAnalysisPanel(panelEl());
+    return;
+  }
   const libraryNote = typeof Plotly === "undefined"
     ? `<p class="alert warn">The chart library did not load. Values are still shown, but the lines cannot be drawn.</p>`
     : "";
@@ -798,7 +803,7 @@ function bindChrome() {
 async function init() {
   bindChrome();
   const hash = location.hash.replace("#", "");
-  if (hash === "markets" || hash === "companies" || hash === "macro") {
+  if (hash === "markets" || hash === "companies" || hash === "macro" || hash === "analysis") {
     selectTab(hash, { skipHash: true });
   }
   try {

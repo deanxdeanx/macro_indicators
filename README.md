@@ -145,6 +145,12 @@ that commits the snapshot, so Pages updates even though that bot push does
 not start `pages.yml`. To publish again by hand, open **Actions → Deploy
 GitHub Pages** and run the workflow on `main`.
 
+The live site is moving to Vercel, and this repository is becoming private.
+Leave this Pages workflow in place until that cutover is finished, then delete
+`.github/workflows/pages.yml`. The daily refresh workflow should stay: it
+commits new data, and Vercel redeploys that push. The Pages deploy job inside
+the refresh workflow can be removed at the same time as `pages.yml`.
+
 ### Vercel
 
 1. Go to [vercel.com/new](https://vercel.com/new) and import
@@ -153,12 +159,53 @@ GitHub Pages** and run the workflow on `main`.
 3. Framework preset **Other**, install command empty, build command empty,
    output directory `site`. `vercel.json` already sets those. If the import
    screen overrides them, put the values back.
-4. Deploy. There are no environment variables.
+4. Deploy. Static files come from `site/`. Python functions in `api/` are
+   deployed with them (`/api/analyze` and `/api/public-config`).
+5. Add the environment variables below. The chart and fundamentals work
+   without them. The Analysis request panel shows a not-configured message
+   until they are set.
 
 Vercel's Git integration deploys `main` on every commit, including the daily
 data commit. The data responses are cached for five minutes
 (`Cache-Control` on `/data/*`). Reload the browser after a refresh if a chart
 still looks old.
+
+### Analysis tab
+
+The Analysis tab is a single-ticker workspace. SPCX (SpaceX Class A) is the
+only ticker configured. Prices before the 12 Jun 2026 IPO are dropped because
+the symbol was used by another security. The daily `build_data.py` run also
+writes `site/data/analysis/SPCX.json`.
+
+What the free sources provided for the committed snapshot:
+
+- Yahoo chart closes from 12 Jun 2026.
+- SEC 424B4 for the prospectus overview, the CEO (Elon Musk), and the $135 IPO price.
+- SEC 10-Q for Class A and Class B shares outstanding as of 15 Oct 2026. Class A market cap is that share count times the latest close. Class B is not priced, so it is not added in.
+- SEC 8-K item 2.02 filings for earnings release dates (4 Aug 2026 and 20 Oct 2026).
+- TTM and NTM earnings multiples are **n/a**. Companyfacts has quarterly EPS, but not four back-to-back quarters, and no free source returned a forward estimate.
+- Dividend yield is **n/a**. No per-share dividend fact was found, and a zero yield was not assumed.
+- Next earnings date is **n/a**. An unconfirmed date from a source would be labeled Expected.
+- Yahoo quote pages returned 401, so they were not used.
+- Financial Modeling Prep is used only when `FMP_API_KEY` is set. It is optional and was not set for this snapshot.
+
+The request panel does nothing until **Submit request**. `/api/analyze` calls OpenRouter with `OPENROUTER_API_KEY`. Model names and prices live in `analysis/models.json`: a cheap extraction step, then a stronger cheap model for the write-up. The browser never sees that key.
+
+### Supabase
+
+1. Create a Supabase project.
+2. In the SQL editor, run `supabase/migrations/001_accounts_and_usage.sql`.
+3. Authentication → Providers: enable Email (magic link) and GitHub.
+4. For GitHub, create an OAuth app and set the callback to `https://<project-ref>.supabase.co/auth/v1/callback`.
+5. Authentication → URL configuration: add the Vercel site URL to the redirect allow list.
+6. On Vercel, set:
+   - `SUPABASE_URL`
+   - `SUPABASE_ANON_KEY` (public; the browser receives it from `/api/public-config`)
+   - `SUPABASE_SERVICE_ROLE_KEY` (server only)
+   - `OPENROUTER_API_KEY` (server only)
+   - `FMP_API_KEY` (optional, server only, used by the data build if you add it to the GitHub Action)
+
+New accounts get a 7-day trial and 3 credits. Each successful analysis spends 1 credit. There is a `pro` tier column and no payment flow. Users can read only their own account and usage rows. Credit changes go through the `spend_credits` function, which only the service role can call.
 
 You can use Pages, Vercel, or both. They read the same `site/` files.
 

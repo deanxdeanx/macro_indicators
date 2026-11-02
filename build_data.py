@@ -420,6 +420,13 @@ def main(argv: list[str] | None = None) -> int:
     if report["with_data"] == 0:
         print("No series has usable observations.")
         return 1
+    from build_analysis import build_analysis_snapshot
+
+    analysis = build_analysis_snapshot(args.data_dir / "analysis", timeout=args.timeout)
+    print(
+        f"Analysis tickers written: {', '.join(analysis['written']) or 'none'}"
+        + (f"  errors: {analysis['errors']}" if analysis["errors"] else "")
+    )
     return 0
 
 

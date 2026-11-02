@@ -4,6 +4,11 @@
   "installCommand": "",
   "buildCommand": "",
   "outputDirectory": "site",
+  "functions": {
+    "api/analyze.py": {
+      "maxDuration": 60
+    }
+  },
   "headers": [
     {
       "source": "/data/(.*)",
