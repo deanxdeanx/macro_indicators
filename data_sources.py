@@ -16,8 +16,6 @@ import requests
 
 
 FRED_CSV_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv"
-FRED_CACHE_TTL = 60 * 60 * 12
-YAHOO_CACHE_TTL = 60 * 60 * 6
 YAHOO_CHART_HOSTS = (
     "https://query1.finance.yahoo.com",
     "https://query2.finance.yahoo.com",
@@ -312,24 +310,6 @@ def fetch_fred_series(
     return _validate_series(series, series_id)
 
 
-def _extract_close_prices(download: pd.DataFrame, tickers: list[str]) -> pd.DataFrame:
-    if download.empty:
-        return pd.DataFrame()
-
-    if isinstance(download.columns, pd.MultiIndex):
-        if "Close" in download.columns.get_level_values(0):
-            close = download["Close"]
-        else:
-            close = download.xs("Close", axis=1, level=-1)
-    else:
-        close = download[["Close"]].rename(columns={"Close": tickers[0]})
-
-    if isinstance(close, pd.Series):
-        close = close.to_frame(name=tickers[0])
-    close.index = pd.to_datetime(close.index).tz_localize(None)
-    return close.sort_index().dropna(how="all")
-
-
 def _has_finite_number(values: Iterable[object] | None) -> bool:
     if not values:
         return False
@@ -486,50 +466,6 @@ def fetch_yahoo_chart_series(
     raise DataSourceError(f"Yahoo Finance returned no price data for {ticker}.")
 
 
-def fetch_yahoo_prices(tickers: tuple[str, ...], start_date: date, end_date: date | None = None) -> pd.DataFrame:
-    """Fetch adjusted historical close prices from Yahoo Finance in one batch."""
-    import yfinance as yf
-
-    if end_date is None:
-        end_date = date.today()
-    for attempt in range(MAX_FETCH_ATTEMPTS):
-        try:
-            download = yf.download(
-                list(tickers),
-                start=start_date.isoformat(),
-                end=(end_date + pd.Timedelta(days=1)).isoformat(),
-                auto_adjust=True,
-                progress=False,
-                group_by="column",
-                threads=True,
-                timeout=30,
-            )
-            close = _extract_close_prices(download, list(tickers))
-            if not close.empty:
-                return close
-            raise ValueError("Yahoo Finance returned no price data.")
-        except Exception as exc:
-            logger.warning(
-                "yahoo_request_failed ticker_count=%s attempt=%s error=%s",
-                len(tickers),
-                attempt + 1,
-                type(exc).__name__,
-            )
-            if attempt == MAX_FETCH_ATTEMPTS - 1:
-                detail = str(exc).lower()
-                if "rate limit" in detail or "429" in detail:
-                    message = "Yahoo Finance rate-limited the request. Try again later."
-                elif isinstance(exc, TimeoutError) or "timed out" in detail:
-                    message = "Yahoo Finance timed out. Try refreshing the data."
-                else:
-                    message = (
-                        "Yahoo Finance returned no usable price data. Try refreshing the data."
-                    )
-                raise DataSourceError(message) from exc
-            time.sleep(2**attempt)
-    raise DataSourceError("Yahoo Finance fetch failed.")
-
-
 def latest_metrics(series: pd.Series, change_mode: str = "percent") -> dict[str, float | pd.Timestamp]:
     """Calculate latest value, previous-period change, and YTD change."""
     series = series.dropna().sort_index()
@@ -587,26 +523,3 @@ def fetch_macro_data(start_date: date, end_date: date | None = None) -> tuple[di
         indicator.key: data[indicator.key] for indicator in MACRO_INDICATORS if indicator.key in data
     }
     return ordered_data, errors
-
-
-def frame_to_series(
-    frame: pd.DataFrame, indicators: Iterable[Indicator]
-) -> tuple[dict[str, pd.Series], dict[str, str]]:
-    data: dict[str, pd.Series] = {}
-    errors: dict[str, str] = {}
-    for indicator in indicators:
-        if indicator.key not in frame or frame[indicator.key].dropna().empty:
-            errors[indicator.key] = "No data returned."
-            continue
-        try:
-            data[indicator.key] = _validate_series(
-                _normalize_series(frame[indicator.key], indicator.key), indicator.key
-            )
-        except (TypeError, ValueError) as exc:
-            logger.error(
-                "price_series_validation_failed ticker=%s error=%s",
-                indicator.key,
-                type(exc).__name__,
-            )
-            errors[indicator.key] = "The source returned malformed price data."
-    return data, errors

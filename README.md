@@ -1,14 +1,12 @@
 # Macro Terminal
 
 A static dashboard for US macroeconomic indicators, major markets, and a
-representative basket of 20 large-cap companies. The page is plain HTML, CSS,
-and JavaScript. It reads JSON files that a Python script refreshes on a
-schedule. Nothing in the browser calls FRED or Yahoo Finance, which is what
-made the old Streamlit Community Cloud app hang on
-"Synchronizing economic and market feeds...".
+representative basket of 20 large-cap companies. The live site is
+[https://deanxdeanx.github.io/macro_indicators/](https://deanxdeanx.github.io/macro_indicators/).
 
-The original Streamlit app is still in the repo (`app.py`) for local use. It
-is not the deployment path.
+The page is plain HTML, CSS, and JavaScript. It reads JSON files that a Python
+script refreshes on a schedule. Nothing in the browser calls FRED or Yahoo
+Finance.
 
 ## What you see
 
@@ -26,7 +24,7 @@ Previous-period change compares the latest observation with the one before it.
 Rates and spreads use percentage points (`pp`). Levels and prices use percent.
 Year-to-date change uses the first observation in that series' current
 calendar year. Metrics use every observation through the selected end date,
-not only the points inside the chart window. That matches the Streamlit app.
+not only the points inside the chart window.
 
 ## How the data gets there
 
@@ -47,10 +45,9 @@ marks the series `preserved` with the error and the last successful
 list. Each successful series records `fetched_at`. The catalog records
 `last_attempt_at` for every series.
 
-FRED still comes from the public CSV endpoint. Yahoo comes from the chart API
-through `requests`, not `yfinance`, so a stuck client retry cannot hold the
-job open. No API key is required. Both services can rate-limit or go down;
-the last good snapshot stays on the site.
+FRED comes from the public CSV endpoint. Yahoo comes from the public chart
+API. Each request uses a short timeout. No API key is required. Both services
+can rate-limit or go down; the last good snapshot stays on the site.
 
 ### Indicator definitions
 
@@ -83,7 +80,7 @@ From the repository root:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -r requirements-data.txt
+python -m pip install -r requirements.txt
 python build_data.py
 python -m http.server 8000 -d site
 ```
@@ -103,7 +100,7 @@ python build_data.py --start 2020-01-01 --end 2026-11-02
 ## Tests
 
 ```bash
-python -m pip install -r requirements-data.txt
+python -m pip install -r requirements.txt
 python -m unittest -v
 ```
 
@@ -113,7 +110,7 @@ GitHub Actions runs the same command on every push and pull request
 ## Refresh the data on a schedule
 
 `.github/workflows/refresh-data.yml` runs every day at 11:30 UTC and whenever
-someone starts it by hand. It installs `requirements-data.txt`, runs
+someone starts it by hand. It installs `requirements.txt`, runs
 `python build_data.py`, and commits `site/data` only when a file changed.
 A push made with the workflow token does not start another workflow, so the
 same run also deploys GitHub Pages.
@@ -133,32 +130,20 @@ existing snapshot will stay as it is.
 
 ## Deploy
 
-The site is the `site/` directory. Paths are relative, so it works at a domain
-root (Vercel) and at a project path such as
-`https://deanxdeanx.github.io/macro_indicators/` (GitHub Pages).
+The site is the `site/` directory. Paths are relative, so the same files work
+at the GitHub Pages project URL and at a Vercel domain root.
 
 ### GitHub Pages
 
-This is already wired to a workflow. One repository setting is required
-because GitHub will not enable Pages from a workflow file alone.
-
-1. Merge this change to `main`.
-2. On GitHub, open **Settings → Pages**.
-3. Under **Build and deployment**, set **Source** to **GitHub Actions**.
-4. Open **Actions → Deploy GitHub Pages**. If a run is not already green,
-   click **Run workflow** on branch `main`.
-5. When the run finishes, the site URL is on the workflow summary and under
-   **Settings → Pages**. For this repository it is
-   `https://deanxdeanx.github.io/macro_indicators/`.
+The site is published at
+[https://deanxdeanx.github.io/macro_indicators/](https://deanxdeanx.github.io/macro_indicators/).
+**Settings → Pages → Source** is **GitHub Actions**.
 
 Pushes to `main` that change `site/` deploy through
 `.github/workflows/pages.yml`. The daily data job deploys from the same run
 that commits the snapshot, so Pages updates even though that bot push does
-not start `pages.yml`.
-
-Until step 3 is done, the deploy job fails with a message that Pages must be
-enabled and set to GitHub Actions. The data commit in the refresh job still
-succeeds. Re-run **Deploy GitHub Pages** after changing the setting.
+not start `pages.yml`. To publish again by hand, open **Actions → Deploy
+GitHub Pages** and run the workflow on `main`.
 
 ### Vercel
 
@@ -177,21 +162,6 @@ still looks old; the **Reload** button does that.
 
 You can use Pages, Vercel, or both. They read the same `site/` files.
 
-## Optional Streamlit app
-
-`app.py` and `data_sources.py` still run locally. Caching lives in `app.py`
-(`st.cache_data`) so the data modules do not import Streamlit.
-
-```bash
-python -m pip install -r requirements.txt
-streamlit run app.py
-```
-
-`requirements.txt` is the full local app (Streamlit, Plotly, pandas,
-requests, yfinance). `requirements-data.txt` is the snapshot job and the unit
-tests. Do not point Streamlit Community Cloud at this repo if the goal is a
-page that loads: that host is what hung on the Yahoo fetch.
-
 ## Layout
 
 - `build_data.py` fetches every series and writes `site/data/`.
@@ -203,7 +173,7 @@ page that loads: that host is what hung on the Yahoo fetch.
 - `.github/workflows/pages.yml` deploys the site on ordinary pushes.
 - `.github/workflows/tests.yml` runs the unit tests.
 - `vercel.json` tells Vercel to publish `site/` with an empty build.
-- `app.py` is the optional local Streamlit dashboard.
+- `requirements.txt` is pandas and requests, used by the snapshot job and the tests.
 
 ## Troubleshooting
 

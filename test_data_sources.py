@@ -11,11 +11,9 @@ import pandas as pd
 from data_sources import (
     DataSourceError,
     Indicator,
-    _extract_close_prices,
     fetch_fred_series,
     fetch_macro_data,
     fetch_yahoo_chart_series,
-    frame_to_series,
     latest_metrics,
     observation_window,
     parse_yahoo_chart,
@@ -46,17 +44,6 @@ class DataSourceTests(unittest.TestCase):
 
         self.assertAlmostEqual(metrics["previous_change"], 0.25)
         self.assertAlmostEqual(metrics["ytd_change"], 0.25)
-
-    def test_extract_single_ticker_close_prices(self) -> None:
-        download = pd.DataFrame(
-            {"Close": [10.0, 11.0]},
-            index=pd.to_datetime(["2026-01-01", "2026-01-02"]),
-        )
-
-        close = _extract_close_prices(download, ["TEST"])
-
-        self.assertEqual(list(close.columns), ["TEST"])
-        self.assertEqual(close.iloc[-1, 0], 11.0)
 
     def test_indicator_defaults_to_percent_change(self) -> None:
         indicator = Indicator("TEST", "Test", "Test source", "points", "Daily")
@@ -90,20 +77,6 @@ class DataSourceTests(unittest.TestCase):
         self.assertFalse(monthly["is_stale"])
         self.assertTrue(daily["is_stale"])
         self.assertEqual(monthly["age_days"], 74)
-
-    def test_frame_to_series_isolates_malformed_columns(self) -> None:
-        frame = pd.DataFrame({"GOOD": [1.0], "BAD": [2.0]}, index=["not-a-date"])
-        indicators = (
-            Indicator("GOOD", "Good", "Test", "points", "Daily"),
-            Indicator("MISSING", "Missing", "Test", "points", "Daily"),
-        )
-
-        with self.assertLogs("data_sources", level="ERROR"):
-            data, errors = frame_to_series(frame, indicators)
-
-        self.assertEqual(data, {})
-        self.assertEqual(errors["GOOD"], "The source returned malformed price data.")
-        self.assertEqual(errors["MISSING"], "No data returned.")
 
     def test_fetch_macro_data_isolates_indicator_failures(self) -> None:
         sample = pd.Series([1.0], index=pd.to_datetime(["2026-01-01"]))
