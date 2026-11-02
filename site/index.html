@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Macro Terminal: US economic indicators, major markets, and a 20-stock basket.">
+  <meta name="theme-color" content="#070909">
+  <title>Macro Terminal</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%237aa480'/%3E%3Ctext x='16' y='21' text-anchor='middle' font-family='sans-serif' font-size='12' font-weight='700' fill='%230b100d'%3EMT%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/plotly.js-basic-dist@2.35.2/plotly-basic.min.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <div class="page">
+    <header class="terminal-header">
+      <div class="brand-lockup">
+        <div class="brand-mark" aria-hidden="true">MT</div>
+        <div>
+          <div class="brand-name">Macro Terminal</div>
+          <div class="brand-sub">US ECONOMY / MARKETS / EQUITIES</div>
+        </div>
+      </div>
+      <div class="market-status">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="header-status">Loading snapshot…</span>
+      </div>
+    </header>
+
+    <form id="controls" class="controls">
+      <label>
+        <span>Start</span>
+        <input id="range-start" name="start" type="date" required>
+      </label>
+      <label>
+        <span>End</span>
+        <input id="range-end" name="end" type="date" required>
+      </label>
+      <button id="reload" class="btn primary" type="button">Reload</button>
+      <p id="snapshot-note" class="note">Daily snapshot · FRED and Yahoo Finance</p>
+    </form>
+
+    <div id="banner" class="banner-stack" aria-live="polite"></div>
+    <p id="range-message" class="message" hidden></p>
+
+    <section id="snapshot" aria-label="Market snapshot"></section>
+
+    <div class="tabs" role="tablist" aria-label="Dashboard sections">
+      <button id="tab-macro" type="button" role="tab" aria-selected="true" aria-controls="panel" data-tab="macro">Macro indicators</button>
+      <button id="tab-markets" type="button" role="tab" aria-selected="false" aria-controls="panel" data-tab="markets" tabindex="-1">Markets</button>
+      <button id="tab-companies" type="button" role="tab" aria-selected="false" aria-controls="panel" data-tab="companies" tabindex="-1">Top companies</button>
+    </div>
+    <main id="panel" tabindex="-1"></main>
+
+    <footer class="site-foot">
+      <p>FRED public CSV and Yahoo Finance. This page reads a daily snapshot; it does not call those sources from your browser. Previous-period change compares the latest observation with the one before it. YTD compares it with the first observation of that calendar year. Rates show percentage-point changes (pp); prices show percent changes.</p>
+    </footer>
+  </div>
+  <noscript>
+    <p class="noscript">Macro Terminal needs JavaScript to draw the charts from the static snapshot.</p>
+  </noscript>
+</body>
+</html>

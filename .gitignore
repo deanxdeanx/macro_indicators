@@ -1,6 +1,8 @@
 .venv/
 __pycache__/
 *.py[cod]
+*.tmp
 .streamlit/*
 !.streamlit/config.toml
+.vercel/
 .DS_Store
