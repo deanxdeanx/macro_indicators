@@ -329,19 +329,201 @@ function chartElementId(entry) {
   return `chart-${stem.replace(/[^A-Za-z0-9_-]/g, "")}`;
 }
 
-function lineLayout(height) {
+const AXIS_FONT = { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#d5dddd", size: 13 };
+const GRID = "#2a3434";
+
+function chartNarrow() {
+  return window.innerWidth <= 800;
+}
+
+function chartHeight(kind) {
+  const narrow = chartNarrow();
+  if (kind === "comparison") return narrow ? 520 : 500;
+  return narrow ? 268 : 300;
+}
+
+function abbreviate(value, digits) {
+  const sign = value < 0 ? "-" : "";
+  const abs = Math.abs(value);
+  const tiers = [[1e12, "T"], [1e9, "B"], [1e6, "M"], [1e3, "k"]];
+  for (const [scale, suffix] of tiers) {
+    if (abs >= scale) {
+      const scaled = abs / scale;
+      const places = scaled >= 100 ? 0 : digits;
+      const text = scaled.toFixed(places).replace(/\.0+$/, "");
+      return `${sign}${text}${suffix}`;
+    }
+  }
+  return `${sign}${Math.round(abs).toLocaleString("en-US")}`;
+}
+
+function groupedNumber(value, digits) {
+  return value.toLocaleString("en-US", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
+function formatYTick(value, unit, step) {
+  if (!Number.isFinite(value)) return "";
+  if (unit === "%") {
+    const wholeStep = Math.abs(step - Math.round(step)) < 1e-8;
+    const digits = step >= 1 && wholeStep ? 0 : step >= 0.1 ? 1 : 2;
+    return `${value.toFixed(digits)}%`;
+  }
+  if (unit === "$ billions") return `$${abbreviate(value * 1e9, 1)}`;
+  if (unit === "$") {
+    if (Math.abs(value) >= 1_000_000) return `$${abbreviate(value, 1)}`;
+    if (step >= 1 || Math.abs(value) >= 100) return `$${groupedNumber(value, 0)}`;
+    return `$${groupedNumber(value, step >= 0.1 ? 1 : 2)}`;
+  }
+  if (unit === "claims") {
+    return Math.abs(value) >= 1_000_000 ? abbreviate(value, 1) : groupedNumber(value, 0);
+  }
+  if (unit === "index") {
+    if (Math.abs(value) >= 10_000) return abbreviate(value, 1);
+    return groupedNumber(value, step >= 1 ? 0 : 1);
+  }
+  return Math.abs(value) >= 1_000_000 ? abbreviate(value, 1) : groupedNumber(value, 0);
+}
+
+function formatHoverValue(value, unit) {
+  if (!Number.isFinite(value)) return "N/A";
+  if (unit === "%") return `${groupedNumber(value, 2)}%`;
+  if (unit === "$") return `$${groupedNumber(value, 2)}`;
+  if (unit === "$ billions") return `$${groupedNumber(value, 1)}B`;
+  if (unit === "claims") return groupedNumber(value, 0);
+  if (unit === "index") return `${groupedNumber(value, 1)} index`;
+  return groupedNumber(value, 2);
+}
+
+function niceStep(span, count) {
+  if (!(span > 0)) return 1;
+  const rough = span / Math.max(2, count - 1);
+  const exp = Math.floor(Math.log10(rough));
+  const base = rough / 10 ** exp;
+  const nice = base <= 1 ? 1 : base <= 2 ? 2 : base <= 5 ? 5 : 10;
+  return nice * 10 ** exp;
+}
+
+function yExtent(values) {
+  const finite = values.filter((value) => Number.isFinite(value));
+  if (!finite.length) return { low: 0, high: 1 };
+  let min = Math.min(...finite);
+  let max = Math.max(...finite);
+  if (min === max) {
+    const pad = Math.abs(min) * 0.12 || 1;
+    return { low: min - pad, high: max + pad };
+  }
+  const span = max - min;
+  return { low: min - span * 0.08, high: max + span * 0.14 };
+}
+
+function ticksBetween(low, high, step) {
+  const ticks = [];
+  if (!(step > 0)) return ticks;
+  const start = Math.ceil((low - step * 1e-8) / step) * step;
+  for (let value = start; value <= high + step * 0.001; value += step) {
+    ticks.push(Number(value.toFixed(6)));
+    if (ticks.length > 8) break;
+  }
+  return ticks;
+}
+
+function shrinkStep(step) {
+  const exp = Math.floor(Math.log10(step));
+  const base = step / 10 ** exp;
+  const smaller = base > 5 ? 5 : base > 2 ? 2 : base > 1 ? 1 : 0.5;
+  return smaller * 10 ** exp;
+}
+
+function yTicks(values, count) {
+  const { low, high } = yExtent(values);
+  let step = niceStep(high - low, count);
+  let ticks = ticksBetween(low, high, step);
+  if (ticks.length < 3) {
+    step = shrinkStep(step);
+    ticks = ticksBetween(low, high, step);
+  }
+  return { ticks, step, low, high };
+}
+
+function dateTicks(dates, narrow) {
+  if (!dates.length) return [];
+  const startMs = Date.parse(`${dates[0]}T00:00:00Z`);
+  const endMs = Date.parse(`${dates[dates.length - 1]}T00:00:00Z`);
+  const days = Math.max(1, Math.round((endMs - startMs) / 86400000));
+  const count = narrow ? 4 : days > 1400 ? 6 : 5;
+  const style = days <= 100 ? "day" : "month";
+  const ticks = [];
+  const seen = new Set();
+  for (let index = 0; index < count; index += 1) {
+    const ms = count === 1 ? startMs : startMs + ((endMs - startMs) * index) / (count - 1);
+    const iso = new Date(ms).toISOString().slice(0, 10);
+    const month = MONTHS[Number(iso.slice(5, 7)) - 1];
+    const label = style === "day" ? `${month} ${Number(iso.slice(8, 10))}` : `${month} ${iso.slice(0, 4)}`;
+    if (seen.has(label)) continue;
+    seen.add(label);
+    ticks.push({ iso, label });
+  }
+  return ticks;
+}
+
+function baseLayout(height, topMargin) {
   return {
     height,
-    margin: { l: 4, r: 8, t: 8, b: 4 },
+    margin: { l: 12, r: 16, t: topMargin, b: 12 },
     hovermode: "x unified",
-    showlegend: false,
     paper_bgcolor: "rgba(0,0,0,0)",
     plot_bgcolor: "rgba(0,0,0,0)",
-    font: { family: "Inter, sans-serif", color: "#7c8787", size: 9 },
-    hoverlabel: { bgcolor: "#161b1b", bordercolor: "#303838", font: { color: "#d7dddd", size: 11 } },
-    xaxis: { gridcolor: "#1c2222", zeroline: false, showline: false, tickfont: { color: "#657070", size: 9 }, nticks: 5 },
-    yaxis: { gridcolor: "#1c2222", zeroline: false, showline: false, side: "right", tickfont: { color: "#657070", size: 9 }, nticks: 5 },
+    font: AXIS_FONT,
+    hoverlabel: {
+      bgcolor: "#161b1b",
+      bordercolor: "#3a4646",
+      font: { family: AXIS_FONT.family, color: "#f2f6f6", size: 13 },
+    },
   };
+}
+
+function xAxis(dates) {
+  const ticks = dateTicks(dates, chartNarrow());
+  return {
+    type: "date",
+    tickmode: "array",
+    tickvals: ticks.map((tick) => tick.iso),
+    ticktext: ticks.map((tick) => tick.label),
+    tickfont: AXIS_FONT,
+    gridcolor: GRID,
+    zeroline: false,
+    showline: false,
+    automargin: true,
+    ticklabelstandoff: 8,
+    ticklabeloverflow: "allow",
+    hoverformat: "%b %d, %Y",
+  };
+}
+
+function yAxis(values, unit, title) {
+  const { ticks, step, low, high } = yTicks(values, chartNarrow() ? 4 : 5);
+  const axis = {
+    side: "right",
+    range: [low, high],
+    autorange: false,
+    tickmode: "array",
+    tickvals: ticks,
+    ticktext: ticks.map((value) => formatYTick(value, unit, step)),
+    tickfont: AXIS_FONT,
+    gridcolor: GRID,
+    zeroline: false,
+    showline: false,
+    automargin: true,
+    ticklabelstandoff: 10,
+    ticklabeloverflow: "allow",
+  };
+  if (title) {
+    axis.title = { text: title, font: AXIS_FONT, standoff: 12 };
+  }
+  return axis;
 }
 
 function drawLine(entry, visible, metrics) {
@@ -352,10 +534,11 @@ function drawLine(entry, visible, metrics) {
   const trace = {
     x: visible.map((row) => row[0]),
     y: visible.map((row) => row[1]),
+    customdata: visible.map((row) => formatHoverValue(row[1], entry.unit)),
     type: "scatter",
     mode: "lines",
-    line: { color, width: 1.45 },
-    hovertemplate: `<b>${escapeHtml(entry.name)}</b><br>%{x|%b %d, %Y}<br>%{y:,.2f} ${escapeHtml(entry.unit)}<extra></extra>`,
+    line: { color, width: 1.6 },
+    hovertemplate: `%{customdata}<extra>${escapeHtml(entry.name)}</extra>`,
   };
   if (useFill) {
     trace.fill = "tozeroy";
@@ -365,32 +548,45 @@ function drawLine(entry, visible, metrics) {
         ? "rgba(185, 87, 81, 0.05)"
         : "rgba(120, 146, 168, 0.04)";
   }
-  Plotly.react(node, [trace], lineLayout(window.innerWidth <= 800 ? 210 : 235), PLOT_CONFIG);
+  const layout = {
+    ...baseLayout(chartHeight("line"), 10),
+    showlegend: false,
+    xaxis: xAxis(visible.map((row) => row[0])),
+    yaxis: yAxis(visible.map((row) => row[1]), entry.unit),
+  };
+  Plotly.react(node, [trace], layout, PLOT_CONFIG);
 }
 
 function drawComparison(seriesList) {
   const node = document.getElementById("comparison-chart");
   if (!node || typeof Plotly === "undefined" || !seriesList.length) return;
+  const dates = seriesList[0].rows.map((row) => row[0]);
+  const values = seriesList.flatMap((item) => item.rows.map((row) => row[1]));
   const traces = seriesList.map((item, index) => ({
     x: item.rows.map((row) => row[0]),
     y: item.rows.map((row) => row[1]),
+    customdata: item.rows.map((row) => formatHoverValue(row[1], "index")),
     type: "scatter",
     mode: "lines",
     name: item.name,
-    line: { width: 1.35, color: SERIES_COLORS[index % SERIES_COLORS.length] },
-    hovertemplate: "%{x|%b %d, %Y}<br>%{y:,.2f}<extra>%{fullData.name}</extra>",
+    line: { width: 1.7, color: SERIES_COLORS[index % SERIES_COLORS.length] },
+    hovertemplate: "%{customdata}<extra>%{fullData.name}</extra>",
   }));
   const layout = {
-    height: window.innerWidth <= 800 ? 460 : 420,
-    margin: { l: 6, r: 10, t: 8, b: 6 },
-    hovermode: "x unified",
-    paper_bgcolor: "rgba(0,0,0,0)",
-    plot_bgcolor: "rgba(0,0,0,0)",
-    font: { family: "Inter, sans-serif", color: "#849090", size: 9 },
-    legend: { orientation: "h", yanchor: "bottom", y: 1.02, xanchor: "left", x: 0, font: { size: 10 } },
-    hoverlabel: { bgcolor: "#161b1b", bordercolor: "#303838", font: { color: "#d7dddd", size: 11 } },
-    xaxis: { gridcolor: "#1c2222", zeroline: false, nticks: 7 },
-    yaxis: { gridcolor: "#1c2222", zeroline: false, side: "right", nticks: 6 },
+    ...baseLayout(chartHeight("comparison"), chartNarrow() ? 78 : 56),
+    showlegend: true,
+    legend: {
+      orientation: "h",
+      yanchor: "bottom",
+      y: 1.12,
+      xanchor: "left",
+      x: 0,
+      font: { family: AXIS_FONT.family, size: 13, color: "#e7eeee" },
+      bgcolor: "rgba(0,0,0,0)",
+      itemwidth: 40,
+    },
+    xaxis: xAxis(dates),
+    yaxis: yAxis(values, "index", "Index"),
   };
   Plotly.react(node, traces, layout, PLOT_CONFIG);
 }
