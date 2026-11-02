@@ -17,7 +17,7 @@ Finance.
 - Equities: the 20-stock basket, with a normalized comparison (window start =
   100) and one chart per selected company.
 - Latest value, previous-period change, and year-to-date change.
-- A custom date range, CSV export, and frequency-aware stale warnings.
+- A start date, with the window ending on the snapshot date, plus CSV export and frequency-aware stale warnings.
 - The dark Macro Terminal layout, including on a phone.
 
 Previous-period change compares the latest observation with the one before it.
@@ -157,8 +157,8 @@ GitHub Pages** and run the workflow on `main`.
 
 Vercel's Git integration deploys `main` on every commit, including the daily
 data commit. The data responses are cached for five minutes
-(`Cache-Control` on `/data/*`). Reload the page after a refresh if a chart
-still looks old; the **Reload** button does that.
+(`Cache-Control` on `/data/*`). Reload the browser after a refresh if a chart
+still looks old.
 
 You can use Pages, Vercel, or both. They read the same `site/` files.
 
