@@ -12,9 +12,9 @@
   "group": "markets",
   "file": "series/IXIC.json",
   "status": "ok",
-  "observation_count": 1718,
-  "latest_date": "2026-11-02",
-  "fetched_at": "2026-11-03T01:15:06Z",
+  "observation_count": 1719,
+  "latest_date": "2026-11-03",
+  "fetched_at": "2026-11-03T20:07:52Z",
   "observations": [
     [
       "2020-01-02",
@@ -6886,7 +6886,11 @@
     ],
     [
       "2026-11-02",
-      25164.363281
+      25164.310547
+    ],
+    [
+      "2026-11-03",
+      25345.726562
     ]
   ]
 }

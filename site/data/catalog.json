@@ -1,12 +1,12 @@
 {
   "generator": "build_data.py",
-  "generated_at": "2026-11-03T01:15:06Z",
+  "generated_at": "2026-11-03T20:07:52Z",
   "history_start": "2020-01-01",
   "history_end": "2026-11-03",
   "default_start": "2021-01-01",
   "counts": {
-    "ok": 47,
-    "preserved": 0,
+    "ok": 27,
+    "preserved": 20,
     "error": 0
   },
   "series": [
@@ -23,12 +23,12 @@
       "section": "Growth and labor",
       "group": "macro",
       "file": "series/UNRATE.json",
-      "status": "ok",
+      "status": "preserved",
       "observation_count": 80,
       "latest_date": "2026-09-01",
       "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
-      "last_error": null
+      "last_attempt_at": "2026-11-03T20:07:52Z",
+      "last_error": "FRED timed out while fetching UNRATE. Try refreshing the data."
     },
     {
       "key": "CPIAUCSL",
@@ -43,12 +43,12 @@
       "section": "Growth and labor",
       "group": "macro",
       "file": "series/CPIAUCSL.json",
-      "status": "ok",
+      "status": "preserved",
       "observation_count": 68,
       "latest_date": "2026-09-01",
       "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
-      "last_error": null
+      "last_attempt_at": "2026-11-03T20:07:52Z",
+      "last_error": "FRED timed out while fetching CPIAUCSL. Try refreshing the data."
     },
     {
       "key": "A191RL1Q225SBEA",
@@ -63,12 +63,12 @@
       "section": "Growth and labor",
       "group": "macro",
       "file": "series/A191RL1Q225SBEA.json",
-      "status": "ok",
+      "status": "preserved",
       "observation_count": 27,
       "latest_date": "2026-07-01",
       "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
-      "last_error": null
+      "last_attempt_at": "2026-11-03T20:07:52Z",
+      "last_error": "FRED timed out while fetching A191RL1Q225SBEA. Try refreshing the data."
     },
     {
       "key": "ICSA",
@@ -83,12 +83,12 @@
       "section": "Growth and labor",
       "group": "macro",
       "file": "series/ICSA.json",
-      "status": "ok",
+      "status": "preserved",
       "observation_count": 356,
       "latest_date": "2026-10-24",
       "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
-      "last_error": null
+      "last_attempt_at": "2026-11-03T20:07:52Z",
+      "last_error": "FRED timed out while fetching ICSA. Try refreshing the data."
     },
     {
       "key": "UMCSENT",
@@ -103,12 +103,12 @@
       "section": "Growth and labor",
       "group": "macro",
       "file": "series/UMCSENT.json",
-      "status": "ok",
+      "status": "preserved",
       "observation_count": 81,
       "latest_date": "2026-09-01",
       "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
-      "last_error": null
+      "last_attempt_at": "2026-11-03T20:07:52Z",
+      "last_error": "FRED timed out while fetching UMCSENT. Try refreshing the data."
     },
     {
       "key": "DFF",
@@ -123,12 +123,12 @@
       "section": "Rates and the curve",
       "group": "macro",
       "file": "series/DFF.json",
-      "status": "ok",
+      "status": "preserved",
       "observation_count": 2495,
       "latest_date": "2026-10-30",
       "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
-      "last_error": null
+      "last_attempt_at": "2026-11-03T20:07:52Z",
+      "last_error": "FRED timed out while fetching DFF. Try refreshing the data."
     },
     {
       "key": "DGS2",
@@ -143,12 +143,12 @@
       "section": "Rates and the curve",
       "group": "macro",
       "file": "series/DGS2.json",
-      "status": "ok",
+      "status": "preserved",
       "observation_count": 1709,
       "latest_date": "2026-10-30",
       "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
-      "last_error": null
+      "last_attempt_at": "2026-11-03T20:07:52Z",
+      "last_error": "FRED timed out while fetching DGS2. Try refreshing the data."
     },
     {
       "key": "DGS10",
@@ -163,12 +163,12 @@
       "section": "Rates and the curve",
       "group": "macro",
       "file": "series/DGS10.json",
-      "status": "ok",
+      "status": "preserved",
       "observation_count": 1709,
       "latest_date": "2026-10-30",
       "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
-      "last_error": null
+      "last_attempt_at": "2026-11-03T20:07:52Z",
+      "last_error": "FRED timed out while fetching DGS10. Try refreshing the data."
     },
     {
       "key": "T10Y2Y",
@@ -183,12 +183,12 @@
       "section": "Rates and the curve",
       "group": "macro",
       "file": "series/T10Y2Y.json",
-      "status": "ok",
+      "status": "preserved",
       "observation_count": 1710,
       "latest_date": "2026-11-02",
       "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
-      "last_error": null
+      "last_attempt_at": "2026-11-03T20:07:52Z",
+      "last_error": "FRED timed out while fetching T10Y2Y. Try refreshing the data."
     },
     {
       "key": "T10Y3M",
@@ -203,12 +203,12 @@
       "section": "Rates and the curve",
       "group": "macro",
       "file": "series/T10Y3M.json",
-      "status": "ok",
+      "status": "preserved",
       "observation_count": 1710,
       "latest_date": "2026-11-02",
       "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
-      "last_error": null
+      "last_attempt_at": "2026-11-03T20:07:52Z",
+      "last_error": "FRED timed out while fetching T10Y3M. Try refreshing the data."
     },
     {
       "key": "DFII10",
@@ -223,12 +223,12 @@
       "section": "Real rates and credit",
       "group": "macro",
       "file": "series/DFII10.json",
-      "status": "ok",
+      "status": "preserved",
       "observation_count": 1709,
       "latest_date": "2026-10-30",
       "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
-      "last_error": null
+      "last_attempt_at": "2026-11-03T20:07:52Z",
+      "last_error": "FRED timed out while fetching DFII10. Try refreshing the data."
     },
     {
       "key": "T10YIE",
@@ -243,12 +243,12 @@
       "section": "Real rates and credit",
       "group": "macro",
       "file": "series/T10YIE.json",
-      "status": "ok",
+      "status": "preserved",
       "observation_count": 1710,
       "latest_date": "2026-11-02",
       "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
-      "last_error": null
+      "last_attempt_at": "2026-11-03T20:07:52Z",
+      "last_error": "FRED timed out while fetching T10YIE. Try refreshing the data."
     },
     {
       "key": "BAMLH0A0HYM2",
@@ -263,12 +263,12 @@
       "section": "Real rates and credit",
       "group": "macro",
       "file": "series/BAMLH0A0HYM2.json",
-      "status": "ok",
+      "status": "preserved",
       "observation_count": 784,
       "latest_date": "2026-10-30",
       "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
-      "last_error": null
+      "last_attempt_at": "2026-11-03T20:07:52Z",
+      "last_error": "FRED timed out while fetching BAMLH0A0HYM2. Try refreshing the data."
     },
     {
       "key": "BAMLC0A0CM",
@@ -283,12 +283,12 @@
       "section": "Real rates and credit",
       "group": "macro",
       "file": "series/BAMLC0A0CM.json",
-      "status": "ok",
+      "status": "preserved",
       "observation_count": 783,
       "latest_date": "2026-10-30",
       "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
-      "last_error": null
+      "last_attempt_at": "2026-11-03T20:07:52Z",
+      "last_error": "FRED timed out while fetching BAMLC0A0CM. Try refreshing the data."
     },
     {
       "key": "M2SL",
@@ -303,12 +303,12 @@
       "section": "Liquidity",
       "group": "macro",
       "file": "series/M2SL.json",
-      "status": "ok",
+      "status": "preserved",
       "observation_count": 81,
       "latest_date": "2026-09-01",
       "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
-      "last_error": null
+      "last_attempt_at": "2026-11-03T20:07:52Z",
+      "last_error": "FRED timed out while fetching M2SL. Try refreshing the data."
     },
     {
       "key": "WALCL",
@@ -323,12 +323,12 @@
       "section": "Liquidity",
       "group": "macro",
       "file": "series/WALCL.json",
-      "status": "ok",
+      "status": "preserved",
       "observation_count": 357,
       "latest_date": "2026-10-28",
       "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
-      "last_error": null
+      "last_attempt_at": "2026-11-03T20:07:52Z",
+      "last_error": "FRED timed out while fetching WALCL. Try refreshing the data."
     },
     {
       "key": "WRESBAL",
@@ -343,12 +343,12 @@
       "section": "Liquidity",
       "group": "macro",
       "file": "series/WRESBAL.json",
-      "status": "ok",
+      "status": "preserved",
       "observation_count": 357,
       "latest_date": "2026-10-28",
       "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
-      "last_error": null
+      "last_attempt_at": "2026-11-03T20:07:52Z",
+      "last_error": "FRED timed out while fetching WRESBAL. Try refreshing the data."
     },
     {
       "key": "RRPONTSYD",
@@ -363,12 +363,12 @@
       "section": "Liquidity",
       "group": "macro",
       "file": "series/RRPONTSYD.json",
-      "status": "ok",
+      "status": "preserved",
       "observation_count": 1707,
       "latest_date": "2026-11-02",
       "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
-      "last_error": null
+      "last_attempt_at": "2026-11-03T20:07:52Z",
+      "last_error": "FRED timed out while fetching RRPONTSYD. Try refreshing the data."
     },
     {
       "key": "WTREGEN",
@@ -383,12 +383,12 @@
       "section": "Liquidity",
       "group": "macro",
       "file": "series/WTREGEN.json",
-      "status": "ok",
+      "status": "preserved",
       "observation_count": 357,
       "latest_date": "2026-10-28",
       "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
-      "last_error": null
+      "last_attempt_at": "2026-11-03T20:07:52Z",
+      "last_error": "FRED timed out while fetching WTREGEN. Try refreshing the data."
     },
     {
       "key": "DTWEXBGS",
@@ -403,12 +403,12 @@
       "section": "Dollar",
       "group": "macro",
       "file": "series/DTWEXBGS.json",
-      "status": "ok",
+      "status": "preserved",
       "observation_count": 1708,
       "latest_date": "2026-10-30",
       "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
-      "last_error": null
+      "last_attempt_at": "2026-11-03T20:07:52Z",
+      "last_error": "FRED timed out while fetching DTWEXBGS. Try refreshing the data."
     },
     {
       "key": "^GSPC",
@@ -424,10 +424,10 @@
       "group": "markets",
       "file": "series/GSPC.json",
       "status": "ok",
-      "observation_count": 1718,
-      "latest_date": "2026-11-02",
-      "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
+      "observation_count": 1719,
+      "latest_date": "2026-11-03",
+      "fetched_at": "2026-11-03T20:07:52Z",
+      "last_attempt_at": "2026-11-03T20:07:52Z",
       "last_error": null
     },
     {
@@ -444,10 +444,10 @@
       "group": "markets",
       "file": "series/IXIC.json",
       "status": "ok",
-      "observation_count": 1718,
-      "latest_date": "2026-11-02",
-      "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
+      "observation_count": 1719,
+      "latest_date": "2026-11-03",
+      "fetched_at": "2026-11-03T20:07:52Z",
+      "last_attempt_at": "2026-11-03T20:07:52Z",
       "last_error": null
     },
     {
@@ -464,10 +464,10 @@
       "group": "markets",
       "file": "series/BTC-USD.json",
       "status": "ok",
-      "observation_count": 2498,
+      "observation_count": 2499,
       "latest_date": "2026-11-03",
-      "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
+      "fetched_at": "2026-11-03T20:07:52Z",
+      "last_attempt_at": "2026-11-03T20:07:52Z",
       "last_error": null
     },
     {
@@ -484,10 +484,10 @@
       "group": "markets",
       "file": "series/VIX.json",
       "status": "ok",
-      "observation_count": 1720,
-      "latest_date": "2026-11-02",
-      "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
+      "observation_count": 1721,
+      "latest_date": "2026-11-03",
+      "fetched_at": "2026-11-03T20:07:52Z",
+      "last_attempt_at": "2026-11-03T20:07:52Z",
       "last_error": null
     },
     {
@@ -504,10 +504,10 @@
       "group": "markets",
       "file": "series/GC-F.json",
       "status": "ok",
-      "observation_count": 1721,
+      "observation_count": 1722,
       "latest_date": "2026-11-03",
-      "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
+      "fetched_at": "2026-11-03T20:07:52Z",
+      "last_attempt_at": "2026-11-03T20:07:52Z",
       "last_error": null
     },
     {
@@ -524,10 +524,10 @@
       "group": "markets",
       "file": "series/CL-F.json",
       "status": "ok",
-      "observation_count": 1720,
+      "observation_count": 1721,
       "latest_date": "2026-11-03",
-      "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
+      "fetched_at": "2026-11-03T20:07:52Z",
+      "last_attempt_at": "2026-11-03T20:07:52Z",
       "last_error": null
     },
     {
@@ -544,10 +544,10 @@
       "group": "companies",
       "file": "series/AAPL.json",
       "status": "ok",
-      "observation_count": 1717,
-      "latest_date": "2026-10-30",
-      "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
+      "observation_count": 1719,
+      "latest_date": "2026-11-03",
+      "fetched_at": "2026-11-03T20:07:52Z",
+      "last_attempt_at": "2026-11-03T20:07:52Z",
       "last_error": null
     },
     {
@@ -564,10 +564,10 @@
       "group": "companies",
       "file": "series/MSFT.json",
       "status": "ok",
-      "observation_count": 1717,
-      "latest_date": "2026-10-30",
-      "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
+      "observation_count": 1719,
+      "latest_date": "2026-11-03",
+      "fetched_at": "2026-11-03T20:07:52Z",
+      "last_attempt_at": "2026-11-03T20:07:52Z",
       "last_error": null
     },
     {
@@ -584,10 +584,10 @@
       "group": "companies",
       "file": "series/NVDA.json",
       "status": "ok",
-      "observation_count": 1717,
-      "latest_date": "2026-10-30",
-      "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
+      "observation_count": 1719,
+      "latest_date": "2026-11-03",
+      "fetched_at": "2026-11-03T20:07:52Z",
+      "last_attempt_at": "2026-11-03T20:07:52Z",
       "last_error": null
     },
     {
@@ -604,10 +604,10 @@
       "group": "companies",
       "file": "series/GOOGL.json",
       "status": "ok",
-      "observation_count": 1717,
-      "latest_date": "2026-10-30",
-      "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
+      "observation_count": 1719,
+      "latest_date": "2026-11-03",
+      "fetched_at": "2026-11-03T20:07:52Z",
+      "last_attempt_at": "2026-11-03T20:07:52Z",
       "last_error": null
     },
     {
@@ -624,10 +624,10 @@
       "group": "companies",
       "file": "series/AMZN.json",
       "status": "ok",
-      "observation_count": 1717,
-      "latest_date": "2026-10-30",
-      "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
+      "observation_count": 1719,
+      "latest_date": "2026-11-03",
+      "fetched_at": "2026-11-03T20:07:52Z",
+      "last_attempt_at": "2026-11-03T20:07:52Z",
       "last_error": null
     },
     {
@@ -644,10 +644,10 @@
       "group": "companies",
       "file": "series/META.json",
       "status": "ok",
-      "observation_count": 1717,
-      "latest_date": "2026-10-30",
-      "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
+      "observation_count": 1719,
+      "latest_date": "2026-11-03",
+      "fetched_at": "2026-11-03T20:07:52Z",
+      "last_attempt_at": "2026-11-03T20:07:52Z",
       "last_error": null
     },
     {
@@ -664,10 +664,10 @@
       "group": "companies",
       "file": "series/AVGO.json",
       "status": "ok",
-      "observation_count": 1717,
-      "latest_date": "2026-10-30",
-      "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
+      "observation_count": 1719,
+      "latest_date": "2026-11-03",
+      "fetched_at": "2026-11-03T20:07:52Z",
+      "last_attempt_at": "2026-11-03T20:07:52Z",
       "last_error": null
     },
     {
@@ -684,10 +684,10 @@
       "group": "companies",
       "file": "series/TSLA.json",
       "status": "ok",
-      "observation_count": 1717,
-      "latest_date": "2026-10-30",
-      "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
+      "observation_count": 1719,
+      "latest_date": "2026-11-03",
+      "fetched_at": "2026-11-03T20:07:52Z",
+      "last_attempt_at": "2026-11-03T20:07:52Z",
       "last_error": null
     },
     {
@@ -704,10 +704,10 @@
       "group": "companies",
       "file": "series/BRK-B.json",
       "status": "ok",
-      "observation_count": 1717,
-      "latest_date": "2026-10-30",
-      "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
+      "observation_count": 1719,
+      "latest_date": "2026-11-03",
+      "fetched_at": "2026-11-03T20:07:52Z",
+      "last_attempt_at": "2026-11-03T20:07:52Z",
       "last_error": null
     },
     {
@@ -724,10 +724,10 @@
       "group": "companies",
       "file": "series/LLY.json",
       "status": "ok",
-      "observation_count": 1717,
-      "latest_date": "2026-10-30",
-      "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
+      "observation_count": 1719,
+      "latest_date": "2026-11-03",
+      "fetched_at": "2026-11-03T20:07:52Z",
+      "last_attempt_at": "2026-11-03T20:07:52Z",
       "last_error": null
     },
     {
@@ -744,10 +744,10 @@
       "group": "companies",
       "file": "series/JPM.json",
       "status": "ok",
-      "observation_count": 1717,
-      "latest_date": "2026-10-30",
-      "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
+      "observation_count": 1719,
+      "latest_date": "2026-11-03",
+      "fetched_at": "2026-11-03T20:07:52Z",
+      "last_attempt_at": "2026-11-03T20:07:52Z",
       "last_error": null
     },
     {
@@ -764,10 +764,10 @@
       "group": "companies",
       "file": "series/WMT.json",
       "status": "ok",
-      "observation_count": 1717,
-      "latest_date": "2026-10-30",
-      "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
+      "observation_count": 1719,
+      "latest_date": "2026-11-03",
+      "fetched_at": "2026-11-03T20:07:52Z",
+      "last_attempt_at": "2026-11-03T20:07:52Z",
       "last_error": null
     },
     {
@@ -784,10 +784,10 @@
       "group": "companies",
       "file": "series/V.json",
       "status": "ok",
-      "observation_count": 1717,
-      "latest_date": "2026-10-30",
-      "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
+      "observation_count": 1719,
+      "latest_date": "2026-11-03",
+      "fetched_at": "2026-11-03T20:07:52Z",
+      "last_attempt_at": "2026-11-03T20:07:52Z",
       "last_error": null
     },
     {
@@ -804,10 +804,10 @@
       "group": "companies",
       "file": "series/ORCL.json",
       "status": "ok",
-      "observation_count": 1717,
-      "latest_date": "2026-10-30",
-      "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
+      "observation_count": 1719,
+      "latest_date": "2026-11-03",
+      "fetched_at": "2026-11-03T20:07:52Z",
+      "last_attempt_at": "2026-11-03T20:07:52Z",
       "last_error": null
     },
     {
@@ -824,10 +824,10 @@
       "group": "companies",
       "file": "series/MA.json",
       "status": "ok",
-      "observation_count": 1717,
-      "latest_date": "2026-10-30",
-      "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
+      "observation_count": 1719,
+      "latest_date": "2026-11-03",
+      "fetched_at": "2026-11-03T20:07:52Z",
+      "last_attempt_at": "2026-11-03T20:07:52Z",
       "last_error": null
     },
     {
@@ -844,10 +844,10 @@
       "group": "companies",
       "file": "series/XOM.json",
       "status": "ok",
-      "observation_count": 1717,
-      "latest_date": "2026-10-30",
-      "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
+      "observation_count": 1719,
+      "latest_date": "2026-11-03",
+      "fetched_at": "2026-11-03T20:07:52Z",
+      "last_attempt_at": "2026-11-03T20:07:52Z",
       "last_error": null
     },
     {
@@ -864,10 +864,10 @@
       "group": "companies",
       "file": "series/COST.json",
       "status": "ok",
-      "observation_count": 1717,
-      "latest_date": "2026-10-30",
-      "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
+      "observation_count": 1719,
+      "latest_date": "2026-11-03",
+      "fetched_at": "2026-11-03T20:07:52Z",
+      "last_attempt_at": "2026-11-03T20:07:52Z",
       "last_error": null
     },
     {
@@ -884,10 +884,10 @@
       "group": "companies",
       "file": "series/NFLX.json",
       "status": "ok",
-      "observation_count": 1717,
-      "latest_date": "2026-10-30",
-      "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
+      "observation_count": 1719,
+      "latest_date": "2026-11-03",
+      "fetched_at": "2026-11-03T20:07:52Z",
+      "last_attempt_at": "2026-11-03T20:07:52Z",
       "last_error": null
     },
     {
@@ -904,10 +904,10 @@
       "group": "companies",
       "file": "series/JNJ.json",
       "status": "ok",
-      "observation_count": 1717,
-      "latest_date": "2026-10-30",
-      "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
+      "observation_count": 1719,
+      "latest_date": "2026-11-03",
+      "fetched_at": "2026-11-03T20:07:52Z",
+      "last_attempt_at": "2026-11-03T20:07:52Z",
       "last_error": null
     },
     {
@@ -924,10 +924,10 @@
       "group": "companies",
       "file": "series/PG.json",
       "status": "ok",
-      "observation_count": 1717,
-      "latest_date": "2026-10-30",
-      "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
+      "observation_count": 1719,
+      "latest_date": "2026-11-03",
+      "fetched_at": "2026-11-03T20:07:52Z",
+      "last_attempt_at": "2026-11-03T20:07:52Z",
       "last_error": null
     },
     {
@@ -946,8 +946,8 @@
       "status": "ok",
       "observation_count": 1707,
       "latest_date": "2026-11-02",
-      "fetched_at": "2026-11-03T01:15:06Z",
-      "last_attempt_at": "2026-11-03T01:15:06Z",
+      "fetched_at": "2026-11-03T20:07:52Z",
+      "last_attempt_at": "2026-11-03T20:07:52Z",
       "last_error": null
     }
   ]

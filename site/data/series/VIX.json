@@ -12,9 +12,9 @@
   "group": "markets",
   "file": "series/VIX.json",
   "status": "ok",
-  "observation_count": 1720,
-  "latest_date": "2026-11-02",
-  "fetched_at": "2026-11-03T01:15:06Z",
+  "observation_count": 1721,
+  "latest_date": "2026-11-03",
+  "fetched_at": "2026-11-03T20:07:52Z",
   "observations": [
     [
       "2020-01-02",
@@ -6895,6 +6895,10 @@
     [
       "2026-11-02",
       21.15
+    ],
+    [
+      "2026-11-03",
+      21.02
     ]
   ]
 }
