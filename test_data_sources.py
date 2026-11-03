@@ -111,9 +111,10 @@ class DataSourceTests(unittest.TestCase):
                 end_date=date(2026, 2, 1),
                 timeout=7,
                 attempts=1,
+                api_key="",
             )
 
-        self.assertEqual(request.call_args.kwargs["timeout"], (5.0, 7))
+        self.assertEqual(request.call_args.kwargs["timeout"], (7, 7))
         self.assertEqual(float(series.iloc[-1]), 1.5)
 
     def test_parse_yahoo_chart_prefers_adjusted_close(self) -> None:

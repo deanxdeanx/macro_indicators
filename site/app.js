@@ -519,6 +519,52 @@ function drawLine(entry, visible, metrics) {
   Plotly.react(node, [trace], layout, PLOT_CONFIG);
 }
 
+function drawDual(entry, visible, overlay, overlayName, overlayUnit) {
+  const node = document.getElementById(chartElementId(entry));
+  if (!node || typeof Plotly === "undefined") return;
+  const layout = {
+    ...baseLayout(chartNarrow() ? 320 : 360, 48),
+    showlegend: true,
+    legend: {
+      orientation: "h",
+      yanchor: "bottom",
+      y: 1.02,
+      x: 0,
+      font: { family: AXIS_FONT.family, size: 13, color: "#e7eeee" },
+    },
+    xaxis: xAxis(visible.map((row) => row[0])),
+    yaxis: { ...yAxis(visible.map((row) => row[1]), entry.unit), side: "left" },
+    yaxis2: {
+      ...yAxis(overlay.map((row) => row[1]), overlayUnit),
+      overlaying: "y",
+      side: "right",
+    },
+  };
+  Plotly.react(node, [
+    {
+      x: visible.map((row) => row[0]),
+      y: visible.map((row) => row[1]),
+      type: "scatter",
+      mode: "lines",
+      name: entry.name,
+      line: { color: "#7c91c9", width: 1.7 },
+      hovertemplate: `%{customdata}<extra>${escapeHtml(entry.name)}</extra>`,
+      customdata: visible.map((row) => formatHoverValue(row[1], entry.unit)),
+    },
+    {
+      x: overlay.map((row) => row[0]),
+      y: overlay.map((row) => row[1]),
+      type: "scatter",
+      mode: "lines",
+      name: overlayName,
+      yaxis: "y2",
+      line: { color: "#d08c69", width: 1.4 },
+      hovertemplate: `%{customdata}<extra>${escapeHtml(overlayName)}</extra>`,
+      customdata: overlay.map((row) => formatHoverValue(row[1], overlayUnit)),
+    },
+  ], layout, PLOT_CONFIG);
+}
+
 function drawComparison(seriesList) {
   const node = document.getElementById("comparison-chart");
   if (!node || typeof Plotly === "undefined" || !seriesList.length) return;
@@ -584,21 +630,24 @@ function cardMarkup(entry) {
   const description = entry.description
     ? `<p class="desc">${escapeHtml(entry.description)}</p>`
     : "";
+  const hasOverlay = doc && Array.isArray(doc.overlay) && doc.overlay.length > 0;
+  const held = entry.status === "preserved";
   const warnings = [];
-  if (entry.status === "preserved" && entry.last_error) {
+  if (held && entry.last_error) {
     const reason = String(entry.last_error).replace(/\.+$/, "");
-    const fetched = entry.fetched_at ? ` Showing data fetched ${formatStamp(entry.fetched_at)}.` : "";
-    warnings.push(`<p class="alert warn">Latest refresh failed (${escapeHtml(reason)}).${fetched}</p>`);
+    const fetched = entry.fetched_at ? ` Showing the last good fetch from ${formatStamp(entry.fetched_at)}.` : "";
+    warnings.push(`<p class="alert warn held">Held over from the previous run. Latest refresh failed (${escapeHtml(reason)}).${fetched}</p>`);
   }
   if (age.isStale) {
     warnings.push(`<p class="alert warn">Latest observation is ${age.ageDays} days old; this may be stale for ${escapeHtml(entry.frequency.toLowerCase())} data.</p>`);
   }
   return `
-    <article class="card">
+    <article class="card${hasOverlay ? " wide" : ""}">
       <div class="card-top">
         <div>
-          <h3>${escapeHtml(entry.name)}</h3>
+          <h3>${escapeHtml(entry.name)}${held ? `<span class="held-badge">Held over</span>` : ""}</h3>
           <p class="meta">${escapeHtml(entry.key)} · ${escapeHtml(entry.frequency)} · ${escapeHtml(entry.source)}</p>
+          <p class="as-of-line">As of ${escapeHtml(formatLong(metrics.latestDate))}</p>
           ${description}
         </div>
         <div class="latest">
@@ -607,7 +656,7 @@ function cardMarkup(entry) {
           <span class="delta ${deltaClass(metrics.previousChange)}">${escapeHtml(formatChange(metrics.previousChange, entry.change_mode))}</span>
         </div>
       </div>
-      <div class="chart" id="${chartElementId(entry)}"></div>
+      <div class="chart${hasOverlay ? " dual" : ""}" id="${chartElementId(entry)}"></div>
       <div class="card-foot">
         <span>YTD ${escapeHtml(formatChange(metrics.ytdChange, entry.change_mode))}</span>
         <span>AS OF ${escapeHtml(formatLong(metrics.latestDate).toUpperCase())} · ${age.ageDays}D OLD</span>
@@ -622,7 +671,13 @@ function bindCards(entries) {
     const history = rowsThrough(observationsOf(entry), state.end);
     const visible = rowsBetween(observationsOf(entry), state.start, state.end);
     if (!visible.length) continue;
-    drawLine(entry, visible, latestMetrics(history, entry.change_mode));
+    const doc = state.series.get(entry.key);
+    const overlay = doc && Array.isArray(doc.overlay) ? rowsBetween(doc.overlay, state.start, state.end) : [];
+    if (overlay.length) {
+      drawDual(entry, visible, overlay, doc.overlay_name || "Overlay", doc.overlay_unit || "points");
+    } else {
+      drawLine(entry, visible, latestMetrics(history, entry.change_mode));
+    }
   }
   panelEl().querySelectorAll("[data-export]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -741,7 +796,26 @@ function renderPanel() {
   }
 
   const entries = groupEntries(state.tab);
-  panelEl().innerHTML = `${libraryNote}<div class="card-grid">${entries.map(cardMarkup).join("")}</div>`;
+  if (state.tab !== "macro") {
+    panelEl().innerHTML = `${libraryNote}<div class="card-grid">${entries.map(cardMarkup).join("")}</div>`;
+    bindCards(entries);
+    return;
+  }
+  const sections = [];
+  for (const entry of entries) {
+    const name = entry.section || "Macro";
+    let section = sections.find((item) => item.name === name);
+    if (!section) {
+      section = { name, entries: [] };
+      sections.push(section);
+    }
+    section.entries.push(entry);
+  }
+  panelEl().innerHTML = `${libraryNote}${sections.map((section) => `
+    <section class="macro-section">
+      <h2 class="section-title">${escapeHtml(section.name)}</h2>
+      <div class="card-grid">${section.entries.map(cardMarkup).join("")}</div>
+    </section>`).join("")}`;
   bindCards(entries);
 }
 

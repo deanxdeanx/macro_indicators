@@ -8,12 +8,13 @@
   "description": "",
   "transform": "none",
   "max_age_days": null,
+  "section": "Growth and labor",
   "group": "companies",
   "file": "series/AMZN.json",
   "status": "ok",
-  "observation_count": 1718,
-  "latest_date": "2026-11-02",
-  "fetched_at": "2026-11-02T20:51:27Z",
+  "observation_count": 1717,
+  "latest_date": "2026-10-30",
+  "fetched_at": "2026-11-03T01:15:06Z",
   "observations": [
     [
       "2020-01-02",
@@ -6882,10 +6883,6 @@
     [
       "2026-10-30",
       240.350006
-    ],
-    [
-      "2026-11-02",
-      246.050003
     ]
   ]
 }

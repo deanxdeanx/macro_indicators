@@ -10,9 +10,10 @@ Finance.
 
 ## What you see
 
-- US economy: unemployment, CPI inflation, real GDP growth, M2, the 10Y–2Y
-  spread, the 10-year yield, initial claims, the federal funds rate, and
-  consumer sentiment.
+- US economy, in five groups: growth and labor; the funds rate and the
+  Treasury curve (daily effective funds rate, 2-year, 10-year, 10Y–2Y, and
+  10Y–3M); real rates and credit spreads; liquidity, including net liquidity
+  against the S&P 500; and the dollar index.
 - Markets: S&P 500, Nasdaq Composite, Bitcoin, VIX, gold futures, and WTI.
 - Equities: the 20-stock basket, with a normalized comparison (window start =
   100) and one chart per selected company.
@@ -29,38 +30,56 @@ not only the points inside the chart window.
 ## How the data gets there
 
 ```text
-FRED CSV ─┐
-          ├─ build_data.py ─ site/data/catalog.json
-Yahoo chart API ─┘            site/data/series/*.json
-                                      │
-                                      ▼
-                               site/index.html
+FRED API (or public CSV) ─┐
+                          ├─ build_data.py ─ site/data/catalog.json
+Yahoo chart API ──────────┘                 site/data/series/*.json
+                                                    │
+                                                    ▼
+                                             site/index.html
 ```
 
-`build_data.py` fetches each series on its own, with a 12 second timeout and
-two attempts. One failure does not cancel the others. If a fetch fails and a
-previous file has observations, that file is left untouched and the catalog
-marks the series `preserved` with the error and the last successful
-`fetched_at`. A failed fetch never replaces good observations with an empty
-list. Each successful series records `fetched_at`. The catalog records
-`last_attempt_at` for every series.
+`build_data.py` fetches each series on its own. FRED uses a 30 second read
+timeout and four attempts with exponential backoff. Yahoo uses the requested
+timeout (12 seconds by default) and two attempts. One failure does not cancel
+the others. If a fetch fails and a previous file has observations, that file
+is left untouched and the catalog marks the series `preserved` with the error
+and the last successful `fetched_at`. The card then shows a Held over badge
+and the date of that last good observation. A failed fetch never replaces
+good observations with an empty list. The catalog records `last_attempt_at`
+for every series.
 
-FRED comes from the public CSV endpoint. Yahoo comes from the public chart
-API. Each request uses a short timeout. No API key is required. Both services
-can rate-limit or go down; the last good snapshot stays on the site.
+FRED uses `https://api.stlouisfed.org/fred/series/observations` when
+`FRED_API_KEY` is set, and the public CSV otherwise. An API failure falls
+back to the CSV. Yahoo comes from the public chart API. No key is required
+for the CSV path. Both services can rate-limit or go down; the last good
+snapshot stays on the site.
 
 ### Indicator definitions
 
 - US Unemployment Rate: `UNRATE`
 - US Inflation: year-over-year percentage change calculated from `CPIAUCSL`
 - US Real GDP Growth Rate: `A191RL1Q225SBEA`, annualized quarterly percent change
-- US M2 Money Supply: `M2SL`, billions of dollars
-- 10Y-2Y Treasury Spread: `T10Y2Y`, percentage points
-- 10-Year Treasury Yield: `DGS10`, percent
 - Initial Jobless Claims: `ICSA`, claims
-- Effective Federal Funds Rate: `FEDFUNDS`, percent
 - Consumer Sentiment: `UMCSENT`, University of Michigan index, not seasonally
   adjusted and delayed one month by the source
+- Effective Federal Funds Rate: `DFF`, daily percent
+- 2-Year Treasury Yield: `DGS2`, percent
+- 10-Year Treasury Yield: `DGS10`, percent
+- 10Y-2Y Treasury Spread: `T10Y2Y`, percentage points
+- 10Y-3M Treasury Spread: `T10Y3M`, percentage points
+- 10-Year Real Yield: `DFII10`, percent
+- 10-Year Breakeven Inflation: `T10YIE`, percent
+- US High Yield Spread: `BAMLH0A0HYM2`, option-adjusted spread, percent
+- US Investment Grade Spread: `BAMLC0A0CM`, option-adjusted spread, percent
+- US M2 Money Supply: `M2SL`, billions of dollars
+- Fed Total Assets: `WALCL`, stored in billions (FRED publishes millions)
+- Reserve Balances: `WRESBAL`, stored in billions (FRED publishes millions)
+- Overnight Reverse Repo: `RRPONTSYD`, billions of dollars
+- Treasury General Account: `WTREGEN`, stored in billions (FRED publishes millions)
+- Net Liquidity: `WALCL − WTREGEN − RRPONTSYD` in billions, charted on a second
+  axis against the S&P 500
+- US Dollar Index: `DTWEXBGS`, or ICE `DX-Y.NYB` from Yahoo when that print is
+  more than five days newer
 - S&P 500: `^GSPC`
 - Nasdaq Composite: `^IXIC`
 - Bitcoin: `BTC-USD`
@@ -93,7 +112,7 @@ source that does not.
 Useful flags:
 
 ```bash
-python build_data.py --timeout 12 --workers 6
+python build_data.py --timeout 30 --workers 6
 python build_data.py --start 2020-01-01 --end 2026-11-02
 ```
 
@@ -109,9 +128,27 @@ GitHub Actions runs the same command on every push and pull request
 
 ## Refresh the data on a schedule
 
-`.github/workflows/refresh-data.yml` runs every day at 11:30 UTC and whenever
+`.github/workflows/refresh-data.yml` runs every day at 13:17 UTC and whenever
 someone starts it by hand. It installs `requirements.txt`, runs
-`python build_data.py`, and commits `site/data` only when a file changed.
+`python build_data.py --timeout 30`, and commits `site/data` only when a file changed.
+GitHub often creates that scheduled run hours after 13:17 UTC when Actions is
+busy. The 2 Nov 2026 run was created at 20:51 UTC, about nine hours after the
+old 11:30 cron, and it started immediately once the event existed. That delay
+is GitHub's scheduler, not a timezone setting. **Actions → Refresh data →
+Run workflow** on `main` starts a refresh immediately.
+
+FRED is read from the official API when `FRED_API_KEY` is set, and from the
+public CSV otherwise. The 2 Nov run used a 12 second CSV timeout and every
+FRED series timed out, so the 10-year yield stayed at 29 Oct and the 10Y–2Y
+spread at 30 Oct. The job now waits longer and retries with backoff. To use
+the API:
+
+1. Request a free key at <https://fredaccount.stlouisfed.org/apikeys>.
+2. On GitHub, open **Settings → Secrets and variables → Actions**.
+3. Choose **New repository secret**. Name it `FRED_API_KEY` and paste the key.
+4. Run **Actions → Refresh data → Run workflow** on `main`.
+
+The key is only needed in that Actions secret. Vercel does not fetch FRED.
 A push made with the workflow token does not start another workflow, so the
 same run also deploys GitHub Pages.
 

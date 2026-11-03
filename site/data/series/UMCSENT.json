@@ -8,12 +8,13 @@
   "description": "University of Michigan index; not seasonally adjusted and delayed one month.",
   "transform": "none",
   "max_age_days": 110,
+  "section": "Growth and labor",
   "group": "macro",
   "file": "series/UMCSENT.json",
   "status": "ok",
   "observation_count": 81,
   "latest_date": "2026-09-01",
-  "fetched_at": "2026-11-02T07:12:59Z",
+  "fetched_at": "2026-11-03T01:15:06Z",
   "observations": [
     [
       "2020-01-01",

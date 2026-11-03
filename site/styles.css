@@ -49,14 +49,37 @@ button, input { font: inherit; letter-spacing: 0; }
   margin: 0;
 }
 
-.as-of {
-  margin: 0;
-  color: #697474;
+.as-of,
+.as-of-line {
+  margin: 0.2rem 0 0;
+  color: #c5d0d0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+}
+
+.as-of { color: #697474; font-size: 0.62rem; white-space: nowrap; }
+
+.held-badge {
+  display: inline-block;
+  margin-left: 0.45rem;
+  padding: 0.12rem 0.4rem;
+  border: 1px solid #a6843d;
+  border-radius: 3px;
+  color: #f0d7a2;
+  background: #2c2618;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.62rem;
-  letter-spacing: 0.03em;
-  white-space: nowrap;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  vertical-align: 0.15rem;
 }
+
+.alert.held { border-color: #a6843d; color: #f0d7a2; }
+
+.macro-section { margin-bottom: 1.1rem; }
+.macro-section + .macro-section { margin-top: 0.35rem; }
+.card.wide { grid-column: 1 / -1; }
 
 .start-date {
   display: flex;
@@ -242,6 +265,7 @@ input[type="date"]:focus-visible,
   margin: 0.45rem 0 0.7rem;
 }
 
+.chart.dual { height: 360px; }
 .chart.comparison { height: 500px; }
 
 .card-foot {
@@ -367,5 +391,6 @@ input[type="date"]:focus-visible,
   .chip,
   .btn { min-height: 2.6rem; }
   .chart { height: 268px; }
+  .chart.dual { height: 320px; }
   .chart.comparison { height: 520px; }
 }

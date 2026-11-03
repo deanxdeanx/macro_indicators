@@ -8,12 +8,13 @@
   "description": "",
   "transform": "none",
   "max_age_days": null,
+  "section": "Growth and labor",
   "group": "macro",
   "file": "series/A191RL1Q225SBEA.json",
   "status": "ok",
   "observation_count": 27,
   "latest_date": "2026-07-01",
-  "fetched_at": "2026-11-02T07:12:59Z",
+  "fetched_at": "2026-11-03T01:15:06Z",
   "observations": [
     [
       "2020-01-01",
