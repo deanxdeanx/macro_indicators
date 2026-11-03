@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 from io import StringIO
 import logging
 import math
+import os
 import time
 from typing import Iterable
 from urllib.parse import quote, urlencode
@@ -16,6 +17,7 @@ import requests
 
 
 FRED_CSV_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv"
+FRED_API_URL = "https://api.stlouisfed.org/fred/series/observations"
 YAHOO_CHART_HOSTS = (
     "https://query1.finance.yahoo.com",
     "https://query2.finance.yahoo.com",
@@ -53,10 +55,12 @@ class Indicator:
     change_mode: str = "percent"
     description: str = ""
     max_age_days: int | None = None
+    section: str = "Growth and labor"
+    scale: str = "none"
 
 
 MACRO_INDICATORS = (
-    Indicator("UNRATE", "US Unemployment Rate", "FRED", "%", "Monthly", change_mode="points"),
+    Indicator("UNRATE", "US Unemployment Rate", "FRED", "%", "Monthly", change_mode="points", section="Growth and labor"),
     Indicator(
         "CPIAUCSL",
         "US Inflation (CPI, YoY)",
@@ -65,6 +69,7 @@ MACRO_INDICATORS = (
         "Monthly",
         "yoy",
         "points",
+        section="Growth and labor",
     ),
     Indicator(
         "A191RL1Q225SBEA",
@@ -73,33 +78,7 @@ MACRO_INDICATORS = (
         "%",
         "Quarterly",
         change_mode="points",
-    ),
-    Indicator(
-        "M2SL",
-        "US M2 Money Supply",
-        "FRED",
-        "$ billions",
-        "Monthly",
-        description="Seasonally adjusted monthly M2 level.",
-        max_age_days=120,
-    ),
-    Indicator(
-        "T10Y2Y",
-        "10Y-2Y Treasury Spread",
-        "FRED",
-        "%",
-        "Daily",
-        change_mode="points",
-        description="Negative values indicate an inverted yield curve.",
-    ),
-    Indicator(
-        "DGS10",
-        "10-Year Treasury Yield",
-        "FRED",
-        "%",
-        "Daily",
-        change_mode="points",
-        description="Benchmark 10-year constant-maturity Treasury yield.",
+        section="Growth and labor",
     ),
     Indicator(
         "ICSA",
@@ -108,14 +87,7 @@ MACRO_INDICATORS = (
         "claims",
         "Weekly",
         change_mode="points",
-    ),
-    Indicator(
-        "FEDFUNDS",
-        "Effective Federal Funds Rate",
-        "FRED",
-        "%",
-        "Monthly",
-        change_mode="points",
+        section="Growth and labor",
     ),
     Indicator(
         "UMCSENT",
@@ -125,6 +97,165 @@ MACRO_INDICATORS = (
         "Monthly",
         description="University of Michigan index; not seasonally adjusted and delayed one month.",
         max_age_days=110,
+        section="Growth and labor",
+    ),
+    Indicator(
+        "DFF",
+        "Effective Federal Funds Rate",
+        "FRED",
+        "%",
+        "Daily",
+        change_mode="points",
+        description="Daily effective federal funds rate.",
+        section="Rates and the curve",
+    ),
+    Indicator(
+        "DGS2",
+        "2-Year Treasury Yield",
+        "FRED",
+        "%",
+        "Daily",
+        change_mode="points",
+        section="Rates and the curve",
+    ),
+    Indicator(
+        "DGS10",
+        "10-Year Treasury Yield",
+        "FRED",
+        "%",
+        "Daily",
+        change_mode="points",
+        description="Benchmark 10-year constant-maturity Treasury yield.",
+        section="Rates and the curve",
+    ),
+    Indicator(
+        "T10Y2Y",
+        "10Y-2Y Treasury Spread",
+        "FRED",
+        "%",
+        "Daily",
+        change_mode="points",
+        description="Negative values indicate an inverted yield curve.",
+        section="Rates and the curve",
+    ),
+    Indicator(
+        "T10Y3M",
+        "10Y-3M Treasury Spread",
+        "FRED",
+        "%",
+        "Daily",
+        change_mode="points",
+        section="Rates and the curve",
+    ),
+    Indicator(
+        "DFII10",
+        "10-Year Real Yield",
+        "FRED",
+        "%",
+        "Daily",
+        change_mode="points",
+        description="10-year Treasury inflation-protected yield.",
+        section="Real rates and credit",
+    ),
+    Indicator(
+        "T10YIE",
+        "10-Year Breakeven Inflation",
+        "FRED",
+        "%",
+        "Daily",
+        change_mode="points",
+        section="Real rates and credit",
+    ),
+    Indicator(
+        "BAMLH0A0HYM2",
+        "US High Yield Spread",
+        "FRED",
+        "%",
+        "Daily",
+        change_mode="points",
+        description="ICE BofA US high yield option-adjusted spread.",
+        section="Real rates and credit",
+    ),
+    Indicator(
+        "BAMLC0A0CM",
+        "US Investment Grade Spread",
+        "FRED",
+        "%",
+        "Daily",
+        change_mode="points",
+        description="ICE BofA US corporate option-adjusted spread.",
+        section="Real rates and credit",
+    ),
+    Indicator(
+        "M2SL",
+        "US M2 Money Supply",
+        "FRED",
+        "$ billions",
+        "Monthly",
+        description="Seasonally adjusted monthly M2 level.",
+        max_age_days=120,
+        section="Liquidity",
+    ),
+    Indicator(
+        "WALCL",
+        "Fed Total Assets",
+        "FRED",
+        "$ billions",
+        "Weekly",
+        description="Federal Reserve total assets, shown in billions.",
+        max_age_days=20,
+        section="Liquidity",
+        scale="millions_to_billions",
+    ),
+    Indicator(
+        "WRESBAL",
+        "Reserve Balances",
+        "FRED",
+        "$ billions",
+        "Weekly",
+        description="Reserve balances with Federal Reserve Banks, shown in billions.",
+        max_age_days=20,
+        section="Liquidity",
+        scale="millions_to_billions",
+    ),
+    Indicator(
+        "RRPONTSYD",
+        "Overnight Reverse Repo",
+        "FRED",
+        "$ billions",
+        "Daily",
+        description="Treasury securities sold by the Fed in overnight reverse repo.",
+        section="Liquidity",
+    ),
+    Indicator(
+        "WTREGEN",
+        "Treasury General Account",
+        "FRED",
+        "$ billions",
+        "Weekly",
+        description="US Treasury general account at the Fed, week average, shown in billions.",
+        max_age_days=20,
+        section="Liquidity",
+        scale="millions_to_billions",
+    ),
+    Indicator(
+        "NETLIQ",
+        "Net Liquidity",
+        "Computed",
+        "$ billions",
+        "Daily",
+        description="Fed assets minus the Treasury general account minus overnight reverse repo, in billions. Plotted against the S&P 500.",
+        section="Liquidity",
+    ),
+    Indicator(
+        "DTWEXBGS",
+        "US Dollar Index",
+        "FRED",
+        "index",
+        "Daily",
+        description="Nominal broad dollar index. Uses ICE DX-Y.NYB from Yahoo when that print is newer.",
+        max_age_days=14,
+        section="Dollar",
     ),
 )
 
@@ -258,36 +389,53 @@ def _request_error_message(source: str, item: str, exc: requests.RequestExceptio
     return f"{source} could not fetch {item}. Check the connection and try refreshing the data."
 
 
-def fetch_fred_series(
-    series_id: str,
-    start_date: date,
-    transform: str = "none",
-    end_date: date | None = None,
-    *,
-    timeout: float = 60,
-    attempts: int = MAX_FETCH_ATTEMPTS,
-    retry_backoff: float = 1.0,
-) -> pd.Series:
-    """Fetch one FRED series through the public CSV endpoint."""
-    if end_date is None:
-        end_date = date.today()
-    params = {
-        "id": series_id,
-        "cosd": start_date.isoformat(),
-        "coed": end_date.isoformat(),
-    }
-    url = f"{FRED_CSV_URL}?{urlencode(params)}"
-    request_timeout = (min(5.0, timeout), timeout)
+def _finish_fred_series(series: pd.Series, series_id: str, transform: str) -> pd.Series:
+    if transform == "yoy":
+        series = series.pct_change(periods=12, fill_method=None).mul(100).dropna()
+    return _validate_series(series, series_id)
+
+
+def series_from_fred_observations(payload: dict, series_id: str, transform: str = "none") -> pd.Series:
+    """Turn an official FRED observations payload into a numeric series."""
+    observations = payload.get("observations") if isinstance(payload, dict) else None
+    if not isinstance(observations, list) or not observations:
+        message = ""
+        if isinstance(payload, dict):
+            message = str(payload.get("error_message") or "")
+        detail = f" ({message})" if message else ""
+        raise DataSourceError(f"FRED returned no observations for {series_id}{detail}.")
+    dates: list[str] = []
+    values: list[float] = []
+    for row in observations:
+        if not isinstance(row, dict):
+            continue
+        raw = str(row.get("value", "")).strip()
+        if raw in {"", "."}:
+            continue
+        try:
+            values.append(float(raw))
+        except ValueError:
+            continue
+        dates.append(str(row.get("date")))
+    if not values:
+        raise DataSourceError(f"FRED returned no numeric observations for {series_id}.")
+    series = _normalize_series(pd.Series(values, index=pd.to_datetime(dates)), series_id)
+    return _finish_fred_series(series, series_id, transform)
+
+
+def _fred_request(url: str, params: dict, timeout: float, attempts: int, retry_backoff: float, series_id: str) -> requests.Response:
+    request_timeout = (min(10.0, timeout), timeout)
     total_attempts = max(1, attempts)
     for attempt in range(total_attempts):
         try:
             response = requests.get(
                 url,
+                params=params,
                 timeout=request_timeout,
-                headers={"User-Agent": "macro_indicators/1.0"},
+                headers={"User-Agent": "macro_indicators/1.0", "Accept": "application/json,text/csv"},
             )
             response.raise_for_status()
-            break
+            return response
         except requests.RequestException as exc:
             logger.warning(
                 "fred_request_failed series_id=%s attempt=%s error=%s",
@@ -298,16 +446,97 @@ def fetch_fred_series(
             if attempt == total_attempts - 1:
                 raise DataSourceError(_request_error_message("FRED", series_id, exc)) from exc
             time.sleep(retry_backoff * (2**attempt))
+    raise DataSourceError(f"FRED timed out while fetching {series_id}. Try refreshing the data.")
 
+
+def _fetch_fred_csv(
+    series_id: str,
+    start_date: date,
+    end_date: date,
+    transform: str,
+    timeout: float,
+    attempts: int,
+    retry_backoff: float,
+) -> pd.Series:
+    response = _fred_request(
+        FRED_CSV_URL,
+        {"id": series_id, "cosd": start_date.isoformat(), "coed": end_date.isoformat()},
+        timeout,
+        attempts,
+        retry_backoff,
+        series_id,
+    )
     try:
         frame = pd.read_csv(StringIO(response.text))
     except pd.errors.ParserError as exc:
         raise DataSourceError(f"FRED returned unreadable CSV data for {series_id}.") from exc
     frame = validate_fred_response(frame, series_id)
     series = _normalize_series(frame.set_index("observation_date")[series_id], series_id)
-    if transform == "yoy":
-        series = series.pct_change(periods=12, fill_method=None).mul(100).dropna()
-    return _validate_series(series, series_id)
+    return _finish_fred_series(series, series_id, transform)
+
+
+def _fetch_fred_api(
+    series_id: str,
+    start_date: date,
+    end_date: date,
+    transform: str,
+    api_key: str,
+    timeout: float,
+    attempts: int,
+    retry_backoff: float,
+) -> pd.Series:
+    response = _fred_request(
+        FRED_API_URL,
+        {
+            "series_id": series_id,
+            "api_key": api_key,
+            "file_type": "json",
+            "observation_start": start_date.isoformat(),
+            "observation_end": end_date.isoformat(),
+        },
+        timeout,
+        attempts,
+        retry_backoff,
+        series_id,
+    )
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise DataSourceError(f"FRED returned unreadable data for {series_id}.") from exc
+    if isinstance(payload, dict) and payload.get("error_message"):
+        raise DataSourceError(f"FRED rejected the request for {series_id} ({payload['error_message']}).")
+    return series_from_fred_observations(payload, series_id, transform)
+
+
+def fetch_fred_series(
+    series_id: str,
+    start_date: date,
+    transform: str = "none",
+    end_date: date | None = None,
+    *,
+    timeout: float = 60,
+    attempts: int = MAX_FETCH_ATTEMPTS,
+    retry_backoff: float = 1.0,
+    api_key: str | None = None,
+) -> pd.Series:
+    """Fetch one FRED series, using the official API when a key is available."""
+    if end_date is None:
+        end_date = date.today()
+    key = api_key if api_key is not None else (os.environ.get("FRED_API_KEY") or "").strip()
+    if key:
+        try:
+            return _fetch_fred_api(
+                series_id, start_date, end_date, transform, key, timeout, attempts, retry_backoff
+            )
+        except Exception as exc:
+            logger.warning(
+                "fred_api_failed series_id=%s error=%s fallback=csv",
+                series_id,
+                type(exc).__name__,
+            )
+    return _fetch_fred_csv(
+        series_id, start_date, end_date, transform, timeout, attempts, retry_backoff
+    )
 
 
 def _has_finite_number(values: Iterable[object] | None) -> bool:

@@ -8,12 +8,13 @@
   "description": "",
   "transform": "none",
   "max_age_days": null,
+  "section": "Growth and labor",
   "group": "markets",
   "file": "series/CL-F.json",
   "status": "ok",
   "observation_count": 1720,
-  "latest_date": "2026-11-02",
-  "fetched_at": "2026-11-02T20:51:27Z",
+  "latest_date": "2026-11-03",
+  "fetched_at": "2026-11-03T01:15:06Z",
   "observations": [
     [
       "2020-01-02",
@@ -6892,8 +6893,8 @@
       104.120003
     ],
     [
-      "2026-11-02",
-      96.089996
+      "2026-11-03",
+      96.970001
     ]
   ]
 }

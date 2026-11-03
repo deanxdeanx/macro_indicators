@@ -8,12 +8,13 @@
   "description": "Negative values indicate an inverted yield curve.",
   "transform": "none",
   "max_age_days": null,
+  "section": "Rates and the curve",
   "group": "macro",
   "file": "series/T10Y2Y.json",
   "status": "ok",
-  "observation_count": 1709,
-  "latest_date": "2026-10-30",
-  "fetched_at": "2026-11-02T07:12:59Z",
+  "observation_count": 1710,
+  "latest_date": "2026-11-02",
+  "fetched_at": "2026-11-03T01:15:06Z",
   "observations": [
     [
       "2020-01-02",
@@ -6850,6 +6851,10 @@
     [
       "2026-10-30",
       0.38
+    ],
+    [
+      "2026-11-02",
+      0.32
     ]
   ]
 }

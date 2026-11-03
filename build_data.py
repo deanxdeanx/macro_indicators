@@ -124,6 +124,7 @@ def metadata_for(indicator: Indicator, group: str) -> dict:
         "description": indicator.description,
         "transform": indicator.transform,
         "max_age_days": indicator.max_age_days,
+        "section": indicator.section,
         "group": group,
         "file": f"series/{series_file_id(indicator.key)}.json",
     }
@@ -174,6 +175,7 @@ def catalog_entry(
         "description": document.get("description") or "",
         "transform": document.get("transform") or "none",
         "max_age_days": document.get("max_age_days"),
+        "section": document.get("section") or "",
         "group": document["group"],
         "file": document["file"],
         "status": status,
@@ -209,18 +211,22 @@ def _public_error(exc: BaseException) -> str:
 
 
 def default_fetcher(timeout: float):
-    """Fetch one indicator with a short timeout and two attempts."""
+    """Fetch one indicator. FRED gets a longer timeout and more retries than Yahoo."""
+
+    fred_timeout = max(float(timeout), 30.0)
 
     def fetch(indicator: Indicator, start: date, end: date) -> pd.Series:
+        if indicator.source == "Computed":
+            raise DataSourceError(f"{indicator.key} is computed after the source series are stored.")
         if indicator.source == "FRED":
             return fetch_fred_series(
                 indicator.key,
                 start,
                 indicator.transform,
                 end,
-                timeout=timeout,
-                attempts=2,
-                retry_backoff=0.5,
+                timeout=fred_timeout,
+                attempts=4,
+                retry_backoff=1.0,
             )
         if indicator.source == "Yahoo Finance":
             return fetch_yahoo_chart_series(
@@ -234,6 +240,51 @@ def default_fetcher(timeout: float):
         raise DataSourceError(f"Unknown source for {indicator.key}: {indicator.source}.")
 
     return fetch
+
+
+def apply_scale(series: pd.Series, scale: str) -> pd.Series:
+    if scale == "millions_to_billions":
+        return series / 1000.0
+    return series
+
+
+def net_liquidity_series(walcl_billions: pd.Series, tga_billions: pd.Series, rrp_billions: pd.Series) -> pd.Series:
+    """Fed assets minus the Treasury general account minus reverse repo.
+
+    All three inputs are billions of dollars. Weekly levels are carried forward
+    onto each daily reverse-repo date, including dates after the latest weekly
+    print.
+    """
+    calendar = rrp_billions.dropna().sort_index().index
+    frame = pd.DataFrame(
+        {
+            "walcl": walcl_billions.dropna().sort_index().reindex(calendar, method="ffill"),
+            "tga": tga_billions.dropna().sort_index().reindex(calendar, method="ffill"),
+            "rrp": rrp_billions.dropna().sort_index().reindex(calendar),
+        }
+    ).dropna(how="any")
+    net = (frame["walcl"] - frame["tga"] - frame["rrp"]).dropna()
+    net.name = "NETLIQ"
+    return net
+
+
+def choose_dollar_series(
+    fred: pd.Series | None,
+    yahoo: pd.Series | None,
+    lag_days: int = 5,
+) -> tuple[pd.Series, str]:
+    """Prefer FRED's broad dollar index unless ICE's print is newer."""
+    fred_clean = None if fred is None else fred.dropna().sort_index()
+    yahoo_clean = None if yahoo is None else yahoo.dropna().sort_index()
+    if fred_clean is None or fred_clean.empty:
+        if yahoo_clean is None or yahoo_clean.empty:
+            raise DataSourceError("No dollar index data is available.")
+        return yahoo_clean, "Yahoo Finance"
+    if yahoo_clean is None or yahoo_clean.empty:
+        return fred_clean, "FRED"
+    if yahoo_clean.index[-1] > fred_clean.index[-1] + pd.Timedelta(days=lag_days):
+        return yahoo_clean, "Yahoo Finance"
+    return fred_clean, "FRED"
 
 
 def build_snapshot(
@@ -273,6 +324,8 @@ def build_snapshot(
     outcomes: dict[str, tuple[str, object]] = {}
 
     def run_one(indicator: Indicator) -> tuple[str, tuple[str, object]]:
+        if indicator.source == "Computed":
+            return indicator.key, ("defer", None)
         try:
             series = fetch(indicator, fetch_start, fetch_end)
             if series is None or series.dropna().empty:
@@ -287,7 +340,7 @@ def build_snapshot(
             )
             return indicator.key, ("error", exc)
 
-    overall_timeout = max(60.0, float(timeout) * 6)
+    overall_timeout = max(600.0, float(timeout) * 20)
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
         futures = [pool.submit(run_one, indicator) for _, indicator in grouped]
         try:
@@ -315,11 +368,13 @@ def build_snapshot(
                     "Try refreshing the data."
                 )
             status, payload = outcome
+            if status == "defer":
+                continue
             if status != "ok":
                 if isinstance(payload, BaseException):
                     raise payload
                 raise DataSourceError(str(payload) or f"No data returned for {indicator.key}.")
-            observations = observations_from_series(payload)
+            observations = observations_from_series(apply_scale(payload, indicator.scale))
             if not observations:
                 raise DataSourceError(f"No data returned for {indicator.key}.")
             document = series_document(meta, observations, status="ok", fetched_at=moment)
@@ -350,6 +405,7 @@ def build_snapshot(
                 counts["error"] += 1
         entries.append(entry)
 
+    _add_derived_series(data_path, grouped, entries, counts, moment, timeout)
     catalog = {
         "generator": "build_data.py",
         "generated_at": moment,
@@ -375,6 +431,130 @@ def build_snapshot(
     }
 
 
+def _series_from_document(document: dict | None) -> pd.Series | None:
+    if not previous_is_usable(document):
+        return None
+    rows = document["observations"]
+    series = pd.Series(
+        [float(row[1]) for row in rows],
+        index=pd.to_datetime([row[0] for row in rows]),
+        name=document.get("key"),
+    )
+    return series.sort_index()
+
+
+def _scaled_component(data_path: Path, key: str, scale: str) -> pd.Series | None:
+    """Load a component in its published units (already scaled when the file was written)."""
+    return _series_from_document(load_json(data_path / "series" / f"{series_file_id(key)}.json"))
+
+
+def _add_derived_series(
+    data_path: Path,
+    grouped: list[tuple[str, Indicator]],
+    entries: list[dict],
+    counts: dict[str, int],
+    moment: str,
+    timeout: float,
+) -> None:
+    by_key = {item["key"]: item for item in entries}
+    indicators = {indicator.key: (group, indicator) for group, indicator in grouped}
+    if "NETLIQ" in indicators:
+        _write_net_liquidity(data_path, indicators["NETLIQ"], entries, by_key, counts, moment)
+    if "DTWEXBGS" in indicators:
+        _refresh_dollar(data_path, indicators["DTWEXBGS"], entries, by_key, counts, moment, timeout)
+
+
+def _write_net_liquidity(
+    data_path: Path,
+    grouped_indicator: tuple[str, Indicator],
+    entries: list[dict],
+    by_key: dict[str, dict],
+    counts: dict[str, int],
+    moment: str,
+) -> None:
+    group, indicator = grouped_indicator
+    meta = metadata_for(indicator, group)
+    path = data_path / meta["file"]
+    previous = load_json(path)
+    try:
+        walcl = _scaled_component(data_path, "WALCL", "millions_to_billions")
+        tga = _scaled_component(data_path, "WTREGEN", "millions_to_billions")
+        rrp = _scaled_component(data_path, "RRPONTSYD", "none")
+        spx = _scaled_component(data_path, "^GSPC", "none")
+        if walcl is None or tga is None or rrp is None:
+            raise DataSourceError("Net liquidity needs Fed assets, the Treasury general account, and reverse repo.")
+        net = net_liquidity_series(walcl, tga, rrp)
+        observations = observations_from_series(net)
+        if not observations:
+            raise DataSourceError("Net liquidity had no overlapping dates.")
+        document = series_document(meta, observations, status="ok", fetched_at=moment)
+        if spx is not None:
+            aligned = spx.reindex(net.index).ffill().dropna()
+            document["overlay_name"] = "S&P 500"
+            document["overlay_unit"] = "points"
+            document["overlay"] = observations_from_series(aligned)
+        if write_json(path, document):
+            pass
+        entry = catalog_entry(document, status="ok", last_attempt_at=moment, last_error=None)
+        counts["ok"] += 1
+    except Exception as exc:
+        message = _public_error(exc)
+        if previous_is_usable(previous):
+            entry = catalog_entry(
+                _catalog_source_from_previous(meta, previous),
+                status="preserved",
+                last_attempt_at=moment,
+                last_error=message,
+            )
+            counts["preserved"] += 1
+        else:
+            document = series_document(meta, [], status="error", fetched_at=None)
+            write_json(path, document)
+            entry = catalog_entry(document, status="error", last_attempt_at=moment, last_error=message)
+            counts["error"] += 1
+    entries.append(entry)
+    by_key[indicator.key] = entry
+
+
+def _refresh_dollar(
+    data_path: Path,
+    grouped_indicator: tuple[str, Indicator],
+    entries: list[dict],
+    by_key: dict[str, dict],
+    counts: dict[str, int],
+    moment: str,
+    timeout: float,
+) -> None:
+    group, indicator = grouped_indicator
+    meta = metadata_for(indicator, group)
+    path = data_path / meta["file"]
+    current = _series_from_document(load_json(path))
+    try:
+        yahoo = fetch_yahoo_chart_series("DX-Y.NYB", date(date.today().year - 6, 1, 1), date.today(), timeout=timeout, attempts=2)
+    except Exception as exc:
+        logger.warning("dollar_yahoo_failed error=%s", type(exc).__name__)
+        return
+    try:
+        chosen, source = choose_dollar_series(current, yahoo)
+    except DataSourceError:
+        return
+    if source != "Yahoo Finance":
+        return
+    observations = observations_from_series(chosen)
+    yahoo_meta = {**meta, "source": "Yahoo Finance", "description": "ICE US dollar index (DX-Y.NYB), used because it is newer than FRED's broad dollar index."}
+    document = series_document(yahoo_meta, observations, status="ok", fetched_at=moment)
+    write_json(path, document)
+    entry = catalog_entry(document, status="ok", last_attempt_at=moment, last_error=None)
+    if indicator.key in by_key:
+        previous_status = by_key[indicator.key]["status"]
+        if previous_status in counts:
+            counts[previous_status] = max(0, counts[previous_status] - 1)
+        counts["ok"] += 1
+        index = entries.index(by_key[indicator.key])
+        entries[index] = entry
+        by_key[indicator.key] = entry
+
+
 def format_report(report: dict) -> str:
     counts = report["counts"]
     lines = [
@@ -396,7 +576,7 @@ def main(argv: list[str] | None = None) -> int:
         description="Fetch every Macro Terminal series into static JSON files."
     )
     parser.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
-    parser.add_argument("--timeout", type=float, default=12, help="Per-request read timeout in seconds.")
+    parser.add_argument("--timeout", type=float, default=30, help="Per-request read timeout in seconds. FRED uses at least 30.")
     parser.add_argument("--workers", type=int, default=6)
     parser.add_argument("--start", type=date.fromisoformat, default=None)
     parser.add_argument("--end", type=date.fromisoformat, default=None)

@@ -8,12 +8,13 @@
   "description": "",
   "transform": "none",
   "max_age_days": null,
+  "section": "Growth and labor",
   "group": "markets",
   "file": "series/IXIC.json",
   "status": "ok",
   "observation_count": 1718,
   "latest_date": "2026-11-02",
-  "fetched_at": "2026-11-02T20:51:27Z",
+  "fetched_at": "2026-11-03T01:15:06Z",
   "observations": [
     [
       "2020-01-02",
@@ -6885,7 +6886,7 @@
     ],
     [
       "2026-11-02",
-      25161.234375
+      25164.363281
     ]
   ]
 }
