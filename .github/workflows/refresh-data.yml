@@ -7,6 +7,10 @@ on:
     # 20:51 UTC, about nine hours after the 11:30 cron, with no queue time
     # once the event existed). :17 avoids the :00 and :30 pile-ups. A manual
     # run is Actions → Refresh data → Run workflow, and that starts immediately.
+    # The 3 Nov 2026 run (20:07 UTC) timed out every FRED CSV read while Yahoo
+    # succeeded. FRED is limited to two concurrent requests. If more than half
+    # of the FRED series fail, the job still publishes the held-over snapshot
+    # and then fails.
     - cron: "17 13 * * *"
   workflow_dispatch:
 
@@ -38,11 +42,13 @@ jobs:
         run: python -m pip install -r requirements.txt
 
       - name: Build data snapshot
+        id: build
         env:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
         run: python build_data.py --timeout 30
 
       - name: Commit updated data
+        if: always() && steps.build.outcome != 'cancelled'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -55,12 +61,20 @@ jobs:
           fi
 
       - name: Upload GitHub Pages artifact
+        if: always() && steps.build.outcome != 'cancelled'
         uses: actions/upload-pages-artifact@v3
         with:
           path: site
 
+      - name: Fail when most FRED series did not refresh
+        if: steps.build.outcome == 'failure'
+        run: |
+          echo "::error title=FRED refresh incomplete::More than half of the FRED series failed. Previous observations were kept, and this run still deploys that held-over snapshot. The series list is in the build log above."
+          exit 1
+
   deploy:
     needs: refresh
+    if: always() && (needs.refresh.result == 'success' || needs.refresh.result == 'failure')
     runs-on: ubuntu-latest
     concurrency:
       group: pages

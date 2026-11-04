@@ -9,12 +9,13 @@
   "transform": "none",
   "max_age_days": null,
   "section": "Growth and labor",
+  "higher_is_bad": false,
   "group": "markets",
   "file": "series/GSPC.json",
   "status": "ok",
   "observation_count": 1719,
   "latest_date": "2026-11-03",
-  "fetched_at": "2026-11-03T20:07:52Z",
+  "fetched_at": "2026-11-04T07:32:15Z",
   "observations": [
     [
       "2020-01-02",
@@ -6890,7 +6891,7 @@
     ],
     [
       "2026-11-03",
-      7562.959961
+      7568.919922
     ]
   ]
 }

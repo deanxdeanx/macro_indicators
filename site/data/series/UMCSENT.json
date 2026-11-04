@@ -9,12 +9,13 @@
   "transform": "none",
   "max_age_days": 110,
   "section": "Growth and labor",
+  "higher_is_bad": false,
   "group": "macro",
   "file": "series/UMCSENT.json",
   "status": "ok",
   "observation_count": 81,
   "latest_date": "2026-09-01",
-  "fetched_at": "2026-11-03T01:15:06Z",
+  "fetched_at": "2026-11-04T07:32:15Z",
   "observations": [
     [
       "2020-01-01",

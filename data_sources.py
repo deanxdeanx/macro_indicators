@@ -57,10 +57,20 @@ class Indicator:
     max_age_days: int | None = None
     section: str = "Growth and labor"
     scale: str = "none"
+    higher_is_bad: bool = False
 
 
 MACRO_INDICATORS = (
-    Indicator("UNRATE", "US Unemployment Rate", "FRED", "%", "Monthly", change_mode="points", section="Growth and labor"),
+    Indicator(
+        "UNRATE",
+        "US Unemployment Rate",
+        "FRED",
+        "%",
+        "Monthly",
+        change_mode="points",
+        section="Growth and labor",
+        higher_is_bad=True,
+    ),
     Indicator(
         "CPIAUCSL",
         "US Inflation (CPI, YoY)",
@@ -70,6 +80,7 @@ MACRO_INDICATORS = (
         "yoy",
         "points",
         section="Growth and labor",
+        higher_is_bad=True,
     ),
     Indicator(
         "A191RL1Q225SBEA",
@@ -86,8 +97,21 @@ MACRO_INDICATORS = (
         "FRED",
         "claims",
         "Weekly",
-        change_mode="points",
+        change_mode="count",
+        description="Weekly initial claims, shown as a count.",
         section="Growth and labor",
+        higher_is_bad=True,
+    ),
+    Indicator(
+        "IC4WSA",
+        "Initial Claims, 4-Week Average",
+        "FRED",
+        "claims",
+        "Weekly",
+        change_mode="count",
+        description="Four-week moving average of initial claims.",
+        section="Growth and labor",
+        higher_is_bad=True,
     ),
     Indicator(
         "UMCSENT",
@@ -108,6 +132,7 @@ MACRO_INDICATORS = (
         change_mode="points",
         description="Daily effective federal funds rate.",
         section="Rates and the curve",
+        higher_is_bad=True,
     ),
     Indicator(
         "DGS2",
@@ -117,6 +142,7 @@ MACRO_INDICATORS = (
         "Daily",
         change_mode="points",
         section="Rates and the curve",
+        higher_is_bad=True,
     ),
     Indicator(
         "DGS10",
@@ -127,6 +153,7 @@ MACRO_INDICATORS = (
         change_mode="points",
         description="Benchmark 10-year constant-maturity Treasury yield.",
         section="Rates and the curve",
+        higher_is_bad=True,
     ),
     Indicator(
         "T10Y2Y",
@@ -156,6 +183,7 @@ MACRO_INDICATORS = (
         change_mode="points",
         description="10-year Treasury inflation-protected yield.",
         section="Real rates and credit",
+        higher_is_bad=True,
     ),
     Indicator(
         "T10YIE",
@@ -165,6 +193,7 @@ MACRO_INDICATORS = (
         "Daily",
         change_mode="points",
         section="Real rates and credit",
+        higher_is_bad=True,
     ),
     Indicator(
         "BAMLH0A0HYM2",
@@ -175,6 +204,7 @@ MACRO_INDICATORS = (
         change_mode="points",
         description="ICE BofA US high yield option-adjusted spread.",
         section="Real rates and credit",
+        higher_is_bad=True,
     ),
     Indicator(
         "BAMLC0A0CM",
@@ -185,6 +215,7 @@ MACRO_INDICATORS = (
         change_mode="points",
         description="ICE BofA US corporate option-adjusted spread.",
         section="Real rates and credit",
+        higher_is_bad=True,
     ),
     Indicator(
         "M2SL",
@@ -256,6 +287,18 @@ MACRO_INDICATORS = (
         description="Nominal broad dollar index. Uses ICE DX-Y.NYB from Yahoo when that print is newer.",
         max_age_days=14,
         section="Dollar",
+        higher_is_bad=True,
+    ),
+    Indicator(
+        "DTWEXAFEGS",
+        "Dollar vs Advanced Economies",
+        "FRED",
+        "index",
+        "Daily",
+        description="Nominal advanced foreign economies dollar index.",
+        max_age_days=14,
+        section="Dollar",
+        higher_is_bad=True,
     ),
 )
 
@@ -263,9 +306,9 @@ MARKET_INDICATORS = (
     Indicator("^GSPC", "S&P 500 Index", "Yahoo Finance", "points", "Daily"),
     Indicator("^IXIC", "Nasdaq Composite Index", "Yahoo Finance", "points", "Daily"),
     Indicator("BTC-USD", "Bitcoin Price (USD)", "Yahoo Finance", "$", "Daily"),
-    Indicator("^VIX", "CBOE Volatility Index", "Yahoo Finance", "points", "Daily"),
+    Indicator("^VIX", "CBOE Volatility Index", "Yahoo Finance", "points", "Daily", higher_is_bad=True),
     Indicator("GC=F", "Gold Futures", "Yahoo Finance", "$", "Daily"),
-    Indicator("CL=F", "WTI Crude Oil Futures", "Yahoo Finance", "$", "Daily"),
+    Indicator("CL=F", "WTI Crude Oil Futures", "Yahoo Finance", "$", "Daily", higher_is_bad=True),
 )
 
 # A representative, maintainable basket of 20 of the largest US-listed companies.
@@ -423,6 +466,18 @@ def series_from_fred_observations(payload: dict, series_id: str, transform: str 
     return _finish_fred_series(series, series_id, transform)
 
 
+# A browser User-Agent made fred.stlouisfed.org sit until the read timeout from
+# this network, while this short client name returned immediately. GitHub's
+# runner still sees ReadTimeouts on the CSV host (Akamai); that is handled by
+# fewer parallel FRED requests, not by pretending to be a browser.
+FRED_HEADERS = {
+    "User-Agent": "macro_indicators/1.0",
+    "Accept": "text/csv,application/json;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://fred.stlouisfed.org/",
+}
+
+
 def _fred_request(url: str, params: dict, timeout: float, attempts: int, retry_backoff: float, series_id: str) -> requests.Response:
     request_timeout = (min(10.0, timeout), timeout)
     total_attempts = max(1, attempts)
@@ -432,7 +487,7 @@ def _fred_request(url: str, params: dict, timeout: float, attempts: int, retry_b
                 url,
                 params=params,
                 timeout=request_timeout,
-                headers={"User-Agent": "macro_indicators/1.0", "Accept": "application/json,text/csv"},
+                headers=FRED_HEADERS,
             )
             response.raise_for_status()
             return response
@@ -695,6 +750,68 @@ def fetch_yahoo_chart_series(
     raise DataSourceError(f"Yahoo Finance returned no price data for {ticker}.")
 
 
+def format_claims_level(value: float) -> str:
+    """Format a claims count as 218K, never as percentage points."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+        return "N/A"
+    number = float(value)
+    sign = "-" if number < 0 else ""
+    magnitude = abs(number)
+    if magnitude >= 1000:
+        thousands = magnitude / 1000
+        if thousands >= 100:
+            text = f"{thousands:.0f}"
+        else:
+            text = f"{thousands:.1f}".rstrip("0").rstrip(".")
+        return f"{sign}{text}K"
+    return f"{sign}{magnitude:.0f}"
+
+
+def format_claims_change(value: float) -> str:
+    """Format a change in claims as a signed count, such as +4.2K."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+        return "N/A"
+    text = format_claims_level(value)
+    if float(value) > 0:
+        return f"+{text}"
+    return text
+
+
+def lagged_change(series: pd.Series, days: int, change_mode: str = "percent") -> float | None:
+    """Change from the last observation on or before ``days`` before the latest print."""
+    clean = series.dropna().sort_index()
+    if clean.empty:
+        return None
+    latest = float(clean.iloc[-1])
+    cutoff = clean.index[-1] - pd.Timedelta(days=int(days))
+    prior = clean[clean.index <= cutoff]
+    if prior.empty:
+        return None
+    base = float(prior.iloc[-1])
+    if change_mode == "percent":
+        if base == 0:
+            return None
+        return (latest / base - 1) * 100
+    return latest - base
+
+
+def range_percentile(series: pd.Series, years: int = 5) -> float | None:
+    """Where the latest print sits in its trailing window, from 0 to 100."""
+    clean = series.dropna().sort_index()
+    if clean.empty:
+        return None
+    start = clean.index[-1] - pd.DateOffset(years=int(years))
+    window = clean[clean.index >= start]
+    if len(window) < 2:
+        return None
+    low = float(window.min())
+    high = float(window.max())
+    latest = float(window.iloc[-1])
+    if high == low:
+        return 50.0
+    return (latest - low) / (high - low) * 100
+
+
 def latest_metrics(series: pd.Series, change_mode: str = "percent") -> dict[str, float | pd.Timestamp]:
     """Calculate latest value, previous-period change, and YTD change."""
     series = series.dropna().sort_index()
@@ -703,7 +820,7 @@ def latest_metrics(series: pd.Series, change_mode: str = "percent") -> dict[str,
 
     latest = float(series.iloc[-1])
     current_year = series[series.index.year == series.index[-1].year]
-    if change_mode == "points":
+    if change_mode in {"points", "count"}:
         previous_change = float(latest - series.iloc[-2]) if len(series) > 1 else float("nan")
         ytd_change = float(latest - current_year.iloc[0]) if len(current_year) > 1 else float("nan")
     else:

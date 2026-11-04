@@ -79,31 +79,60 @@ function fixed(value, digits) {
   return value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
+function formatClaimsLevel(value) {
+  if (!Number.isFinite(value)) return "N/A";
+  const sign = value < 0 ? "-" : "";
+  const magnitude = Math.abs(value);
+  if (magnitude >= 1000) {
+    const thousands = magnitude / 1000;
+    const text = thousands >= 100
+      ? thousands.toFixed(0)
+      : thousands.toFixed(1).replace(/\.0$/, "");
+    return `${sign}${text}K`;
+  }
+  return `${sign}${magnitude.toFixed(0)}`;
+}
+
+function formatClaimsChange(value) {
+  if (!Number.isFinite(value)) return "N/A";
+  const text = formatClaimsLevel(value);
+  return value > 0 ? `+${text}` : text;
+}
+
 function formatValue(value, unit, compact = false) {
   if (!Number.isFinite(value)) return "N/A";
   if (unit === "$") return `$${compact ? compactNumber(value) : fixed(value, 2)}`;
   if (unit === "$ billions") return `$${fixed(value, 1)}B`;
   if (unit === "%") return `${fixed(value, 2)}%`;
-  if (unit === "claims") return Math.round(value).toLocaleString("en-US");
+  if (unit === "claims") return formatClaimsLevel(value);
   if (unit === "points" || unit === "index") return fixed(value, 2);
   return compact ? compactNumber(value) : fixed(value, 2);
 }
 
 function formatChange(value, changeMode) {
   if (!Number.isFinite(value)) return "N/A";
+  if (changeMode === "count") return formatClaimsChange(value);
   const suffix = changeMode === "points" ? " pp" : "%";
   const sign = value >= 0 ? "+" : "-";
   return `${sign}${Math.abs(value).toFixed(2)}${suffix}`;
 }
 
-function deltaClass(value) {
-  if (!Number.isFinite(value) || value === 0) return "";
-  return value > 0 ? "up" : "down";
+function moveIsBad(value, higherIsBad) {
+  if (!Number.isFinite(value) || value === 0) return null;
+  const rising = value > 0;
+  return higherIsBad ? rising : !rising;
 }
 
-function chartColor(value) {
-  if (!Number.isFinite(value) || value === 0) return NEUTRAL;
-  return value > 0 ? POSITIVE : NEGATIVE;
+function deltaClass(value, higherIsBad = false) {
+  const bad = moveIsBad(value, higherIsBad);
+  if (bad === null) return "";
+  return bad ? "down" : "up";
+}
+
+function chartColor(value, higherIsBad = false) {
+  const bad = moveIsBad(value, higherIsBad);
+  if (bad === null) return NEUTRAL;
+  return bad ? NEGATIVE : POSITIVE;
 }
 
 function rowsThrough(rows, end) {
@@ -139,7 +168,7 @@ function latestMetrics(rows, changeMode) {
   }
   let previousChange = NaN;
   let ytdChange = NaN;
-  if (changeMode === "points") {
+  if (changeMode === "points" || changeMode === "count") {
     if (rows.length > 1) previousChange = latest - rows[rows.length - 2][1];
     if (yearCount > 1 && firstOfYear !== null) ytdChange = latest - firstOfYear;
   } else if (rows.length > 1) {
@@ -340,7 +369,7 @@ function formatHoverValue(value, unit) {
   if (unit === "%") return `${groupedNumber(value, 2)}%`;
   if (unit === "$") return `$${groupedNumber(value, 2)}`;
   if (unit === "$ billions") return `$${groupedNumber(value, 1)}B`;
-  if (unit === "claims") return groupedNumber(value, 0);
+  if (unit === "claims") return formatClaimsLevel(value);
   if (unit === "index") return `${groupedNumber(value, 1)} (start = 100)`;
   return groupedNumber(value, 2);
 }
@@ -485,10 +514,10 @@ function zeroLine(low, high, unit) {
   }];
 }
 
-function drawLine(entry, visible, metrics) {
+function drawLine(entry, visible, change) {
   const node = document.getElementById(chartElementId(entry));
   if (!node || typeof Plotly === "undefined") return;
-  const color = chartColor(metrics.previousChange);
+  const color = chartColor(change, entry.higher_is_bad);
   const useFill = entry.change_mode === "percent";
   const trace = {
     x: visible.map((row) => row[0]),
@@ -610,6 +639,93 @@ function drawComparison(seriesList) {
   Plotly.react(node, traces, layout, PLOT_CONFIG);
 }
 
+const REGIME = [
+  ["DFII10", "10Y real"],
+  ["T10Y2Y", "2s10s"],
+  ["BAMLH0A0HYM2", "HY spread"],
+  ["DTWEXBGS", "Broad dollar"],
+  ["NETLIQ", "Net liquidity"],
+  ["^VIX", "VIX"],
+];
+
+function dayMs(iso) {
+  return Date.parse(`${iso}T00:00:00Z`);
+}
+
+function changeOver(rows, days, changeMode) {
+  if (!rows || !rows.length) return NaN;
+  const latest = rows[rows.length - 1];
+  const cutoff = dayMs(latest[0]) - days * 86400000;
+  let base = null;
+  for (const row of rows) {
+    if (dayMs(row[0]) <= cutoff) base = row[1];
+  }
+  if (base === null) return NaN;
+  if (changeMode === "percent") {
+    if (base === 0) return NaN;
+    return (latest[1] / base - 1) * 100;
+  }
+  return latest[1] - base;
+}
+
+function storedMove(entry, name, rows) {
+  if (entry && Object.prototype.hasOwnProperty.call(entry, name)) {
+    return Number.isFinite(entry[name]) ? entry[name] : NaN;
+  }
+  return changeOver(rows, name === "week_change" ? 7 : 30, entry.change_mode);
+}
+
+function headlineMove(entry, history) {
+  if (entry.frequency === "Daily") {
+    const week = storedMove(entry, "week_change", history);
+    if (Number.isFinite(week)) return { value: week, label: "1W" };
+    const month = storedMove(entry, "month_change", history);
+    if (Number.isFinite(month)) return { value: month, label: "1M" };
+  }
+  return { value: latestMetrics(history, entry.change_mode).previousChange, label: "" };
+}
+
+function ordinal(value) {
+  const rounded = Math.round(value);
+  const mod100 = rounded % 100;
+  const suffix = mod100 >= 11 && mod100 <= 13 ? "th" : ["th", "st", "nd", "rd"][rounded % 10] || "th";
+  return `${rounded}${suffix}`;
+}
+
+function regimeMarkup() {
+  const tiles = REGIME.map(([key, label]) => {
+    const entry = byKey().get(key);
+    if (!entry) {
+      return `<article class="regime-tile"><p class="regime-kicker">${escapeHtml(label)}</p><p class="regime-value">N/A</p></article>`;
+    }
+    const history = rowsThrough(observationsOf(entry), state.end);
+    const metrics = history.length ? latestMetrics(history, entry.change_mode) : null;
+    const week = storedMove(entry, "week_change", history);
+    const month = storedMove(entry, "month_change", history);
+    const direction = Number.isFinite(week) ? week : month;
+    const bad = moveIsBad(direction, entry.higher_is_bad);
+    const tone = bad === null ? "risk-flat" : bad ? "risk-off" : "risk-on";
+    const percentile = Object.prototype.hasOwnProperty.call(entry, "range_percentile") && Number.isFinite(entry.range_percentile)
+      ? entry.range_percentile
+      : NaN;
+    const width = Number.isFinite(percentile) ? Math.min(100, Math.max(0, percentile)) : 0;
+    const pct = Number.isFinite(percentile) ? `${ordinal(percentile)} pct of 5Y` : "5Y range n/a";
+    const latest = metrics ? formatValue(metrics.latest, entry.unit, true) : "N/A";
+    return `
+      <article class="regime-tile ${tone}">
+        <p class="regime-kicker">${escapeHtml(label)}</p>
+        <p class="regime-value">${escapeHtml(latest)}</p>
+        <p class="regime-moves">
+          <span class="delta ${deltaClass(week, entry.higher_is_bad)}">1W ${escapeHtml(formatChange(week, entry.change_mode))}</span>
+          <span class="delta ${deltaClass(month, entry.higher_is_bad)}">1M ${escapeHtml(formatChange(month, entry.change_mode))}</span>
+        </p>
+        <div class="range" role="img" aria-label="${escapeHtml(pct)}"><span class="range-fill" style="width:${width}%"></span></div>
+        <p class="regime-pct">${escapeHtml(pct)}</p>
+      </article>`;
+  }).join("");
+  return `<section class="regime" aria-label="Risk regime">${tiles}</section>`;
+}
+
 function cardMarkup(entry) {
   const doc = state.series.get(entry.key);
   if (doc && doc.loadError) {
@@ -626,6 +742,7 @@ function cardMarkup(entry) {
     return `<article class="card"><p class="alert warn">No ${escapeHtml(entry.name)} data is available in the selected date range.</p></article>`;
   }
   const metrics = latestMetrics(history, entry.change_mode);
+  const headline = headlineMove(entry, history);
   const age = freshness(metrics.latestDate, entry.frequency, entry.max_age_days, todayISO());
   const description = entry.description
     ? `<p class="desc">${escapeHtml(entry.description)}</p>`
@@ -653,7 +770,7 @@ function cardMarkup(entry) {
         <div class="latest">
           <span class="kicker">Latest</span>
           <span class="value">${escapeHtml(formatValue(metrics.latest, entry.unit, true))}</span>
-          <span class="delta ${deltaClass(metrics.previousChange)}">${escapeHtml(formatChange(metrics.previousChange, entry.change_mode))}</span>
+          <span class="delta ${deltaClass(headline.value, entry.higher_is_bad)}">${headline.label ? `${escapeHtml(headline.label)} ` : ""}${escapeHtml(formatChange(headline.value, entry.change_mode))}</span>
         </div>
       </div>
       <div class="chart${hasOverlay ? " dual" : ""}" id="${chartElementId(entry)}"></div>
@@ -676,7 +793,7 @@ function bindCards(entries) {
     if (overlay.length) {
       drawDual(entry, visible, overlay, doc.overlay_name || "Overlay", doc.overlay_unit || "points");
     } else {
-      drawLine(entry, visible, latestMetrics(history, entry.change_mode));
+      drawLine(entry, visible, headlineMove(entry, history).value);
     }
   }
   panelEl().querySelectorAll("[data-export]").forEach((button) => {
@@ -811,7 +928,7 @@ function renderPanel() {
     }
     section.entries.push(entry);
   }
-  panelEl().innerHTML = `${libraryNote}${sections.map((section) => `
+  panelEl().innerHTML = `${regimeMarkup()}${libraryNote}${sections.map((section) => `
     <section class="macro-section">
       <h2 class="section-title">${escapeHtml(section.name)}</h2>
       <div class="card-grid">${section.entries.map(cardMarkup).join("")}</div>
@@ -845,9 +962,19 @@ function selectTab(tab, options = {}) {
   });
 }
 
+function regimeEntries() {
+  return REGIME.map(([key]) => byKey().get(key)).filter(Boolean);
+}
+
+async function ensureTab(tab) {
+  const entries = entriesFor(tab);
+  if (tab !== "macro") return ensure(entries);
+  return ensure(entries.concat(regimeEntries()));
+}
+
 async function activateTab(tab) {
   selectTab(tab);
-  await ensure(entriesFor(tab));
+  await ensureTab(tab);
   draw();
 }
 
@@ -885,7 +1012,7 @@ async function init() {
   }
   setRangeFromCatalog();
   asOfEl().textContent = `Data as of ${formatLong(state.end)}`;
-  await ensure(entriesFor(state.tab));
+  await ensureTab(state.tab);
   draw();
   const rest = state.catalog.series.filter((entry) => !state.series.has(entry.key));
   ensure(rest);
