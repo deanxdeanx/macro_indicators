@@ -9,17 +9,14 @@
   "transform": "none",
   "max_age_days": null,
   "section": "Real rates and credit",
+  "higher_is_bad": true,
   "group": "macro",
   "file": "series/BAMLH0A0HYM2.json",
   "status": "ok",
   "observation_count": 784,
-  "latest_date": "2026-10-30",
-  "fetched_at": "2026-11-03T01:15:06Z",
+  "latest_date": "2026-11-02",
+  "fetched_at": "2026-11-04T07:32:15Z",
   "observations": [
-    [
-      "2023-11-03",
-      4.04
-    ],
     [
       "2023-11-06",
       4.0
@@ -3151,6 +3148,10 @@
     [
       "2026-10-30",
       3.44
+    ],
+    [
+      "2026-11-02",
+      3.43
     ]
   ]
 }

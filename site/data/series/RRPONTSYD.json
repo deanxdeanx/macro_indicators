@@ -9,12 +9,13 @@
   "transform": "none",
   "max_age_days": null,
   "section": "Liquidity",
+  "higher_is_bad": false,
   "group": "macro",
   "file": "series/RRPONTSYD.json",
   "status": "ok",
-  "observation_count": 1707,
-  "latest_date": "2026-11-02",
-  "fetched_at": "2026-11-03T01:15:06Z",
+  "observation_count": 1708,
+  "latest_date": "2026-11-03",
+  "fetched_at": "2026-11-04T07:32:15Z",
   "observations": [
     [
       "2020-01-02",
@@ -6843,6 +6844,10 @@
     [
       "2026-11-02",
       5.087
+    ],
+    [
+      "2026-11-03",
+      0.427
     ]
   ]
 }

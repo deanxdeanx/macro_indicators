@@ -17,12 +17,18 @@ Finance.
 - Markets: S&P 500, Nasdaq Composite, Bitcoin, VIX, gold futures, and WTI.
 - Equities: the 20-stock basket, with a normalized comparison (window start =
   100) and one chart per selected company.
-- Latest value, previous-period change, and year-to-date change.
+- Latest value, a 1-week change on daily series, and year-to-date change.
+- A regime strip on the Macro tab: 10-year real yield, 2s10s, high-yield
+  spread, the broad dollar, net liquidity, and VIX, each with the 1-week and
+  1-month change and its place in the 5-year range.
 - A start date, with the window ending on the snapshot date, plus CSV export and frequency-aware stale warnings.
 - The dark Macro Terminal layout, including on a phone.
 
-Previous-period change compares the latest observation with the one before it.
-Rates and spreads use percentage points (`pp`). Levels and prices use percent.
+Daily cards show the change over about seven days, not the previous print.
+Other frequencies still compare the latest observation with the one before it.
+Rates and spreads use percentage points (`pp`). Claims use a count. Levels and
+prices use percent. Series where a rise is risk-off are drawn red when they
+rise and green when they fall.
 Year-to-date change uses the first observation in that series' current
 calendar year. Metrics use every observation through the selected end date,
 not only the points inside the chart window.
@@ -59,7 +65,8 @@ snapshot stays on the site.
 - US Unemployment Rate: `UNRATE`
 - US Inflation: year-over-year percentage change calculated from `CPIAUCSL`
 - US Real GDP Growth Rate: `A191RL1Q225SBEA`, annualized quarterly percent change
-- Initial Jobless Claims: `ICSA`, claims
+- Initial Jobless Claims: `ICSA`, a count such as 218K, with the change as a count
+- Initial Claims, 4-Week Average: `IC4WSA`, a count
 - Consumer Sentiment: `UMCSENT`, University of Michigan index, not seasonally
   adjusted and delayed one month by the source
 - Effective Federal Funds Rate: `DFF`, daily percent
@@ -80,6 +87,7 @@ snapshot stays on the site.
   axis against the S&P 500
 - US Dollar Index: `DTWEXBGS`, or ICE `DX-Y.NYB` from Yahoo when that print is
   more than five days newer
+- Dollar vs Advanced Economies: `DTWEXAFEGS`
 - S&P 500: `^GSPC`
 - Nasdaq Composite: `^IXIC`
 - Bitcoin: `BTC-USD`
@@ -151,6 +159,20 @@ the API:
 The key is only needed in that Actions secret. Vercel does not fetch FRED.
 A push made with the workflow token does not start another workflow, so the
 same run also deploys GitHub Pages.
+
+FRED requests stay at two at a time. The 3 Nov 2026 scheduled run opened six
+CSV connections together from the GitHub runner. Every one raised `ReadTimeout`
+at 30 seconds, including the last pair, while every Yahoo request on that
+runner succeeded. `fred.stlouisfed.org` is served by Akamai and was accepting
+the connection without sending a body. A browser User-Agent made the same CSV
+endpoint hang, so the client name stays `macro_indicators/1.0`. The official
+API is still used first when `FRED_API_KEY` is set, and a failed API call still
+falls back to the CSV.
+
+If more than half of the FRED series fail, the script keeps the previous
+observations, prints the failed series, and exits with status 2. The workflow
+still commits that snapshot and deploys the held-over page, then the job
+fails so the run is not reported as a success.
 
 ### Manual refresh
 

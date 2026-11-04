@@ -9,12 +9,13 @@
   "transform": "none",
   "max_age_days": null,
   "section": "Rates and the curve",
+  "higher_is_bad": false,
   "group": "macro",
   "file": "series/T10Y3M.json",
   "status": "ok",
-  "observation_count": 1710,
-  "latest_date": "2026-11-02",
-  "fetched_at": "2026-11-03T01:15:06Z",
+  "observation_count": 1711,
+  "latest_date": "2026-11-03",
+  "fetched_at": "2026-11-04T07:32:15Z",
   "observations": [
     [
       "2020-01-02",
@@ -6855,6 +6856,10 @@
     [
       "2026-11-02",
       0.7
+    ],
+    [
+      "2026-11-03",
+      0.74
     ]
   ]
 }

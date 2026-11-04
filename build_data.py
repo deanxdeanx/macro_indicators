@@ -13,6 +13,9 @@ from datetime import date, datetime, timezone
 import json
 import logging
 import math
+import os
+import sys
+import threading
 from pathlib import Path
 import time
 
@@ -26,13 +29,21 @@ from data_sources import (
     company_indicators,
     fetch_fred_series,
     fetch_yahoo_chart_series,
+    lagged_change,
     observation_window,
+    range_percentile,
 )
 
 
 logger = logging.getLogger("build_data")
 
 DEFAULT_DATA_DIR = Path("site/data")
+# The 3 Nov 2026 GitHub run opened six FRED CSV connections together. Every one
+# raised ReadTimeout at 30 seconds, including the last pair, while Yahoo on the
+# same runner succeeded. fred.stlouisfed.org is behind Akamai and was accepting
+# the connection without sending a body. Keep FRED to two at a time.
+FRED_WORKERS = 2
+FRED_START_GAP_SECONDS = 0.4
 
 
 def series_file_id(key: str) -> str:
@@ -125,6 +136,7 @@ def metadata_for(indicator: Indicator, group: str) -> dict:
         "transform": indicator.transform,
         "max_age_days": indicator.max_age_days,
         "section": indicator.section,
+        "higher_is_bad": indicator.higher_is_bad,
         "group": group,
         "file": f"series/{series_file_id(indicator.key)}.json",
     }
@@ -158,6 +170,37 @@ def previous_is_usable(document: dict | None) -> bool:
     return isinstance(first, (list, tuple)) and len(first) >= 2
 
 
+def _json_number(value: float | None, digits: int) -> float | None:
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number):
+        return None
+    return round(number, digits)
+
+
+def moves_from_observations(observations: list, change_mode: str) -> dict[str, float | None]:
+    """1-week change, 1-month change, and 5-year percentile for one stored series."""
+    empty = {"week_change": None, "month_change": None, "range_percentile": None}
+    if not observations:
+        return empty
+    try:
+        series = pd.Series(
+            [float(row[1]) for row in observations],
+            index=pd.to_datetime([row[0] for row in observations]),
+        )
+    except (TypeError, ValueError, IndexError):
+        return empty
+    return {
+        "week_change": _json_number(lagged_change(series, 7, change_mode), 4),
+        "month_change": _json_number(lagged_change(series, 30, change_mode), 4),
+        "range_percentile": _json_number(range_percentile(series), 1),
+    }
+
+
 def catalog_entry(
     document: dict,
     *,
@@ -165,6 +208,7 @@ def catalog_entry(
     last_attempt_at: str,
     last_error: str | None,
 ) -> dict:
+    moves = moves_from_observations(document.get("observations") or [], document.get("change_mode") or "percent")
     return {
         "key": document["key"],
         "name": document["name"],
@@ -176,6 +220,7 @@ def catalog_entry(
         "transform": document.get("transform") or "none",
         "max_age_days": document.get("max_age_days"),
         "section": document.get("section") or "",
+        "higher_is_bad": bool(document.get("higher_is_bad")),
         "group": document["group"],
         "file": document["file"],
         "status": status,
@@ -184,6 +229,7 @@ def catalog_entry(
         "fetched_at": document.get("fetched_at"),
         "last_attempt_at": last_attempt_at,
         "last_error": last_error,
+        **moves,
     }
 
 
@@ -200,6 +246,7 @@ def _catalog_source_from_previous(meta: dict, previous: dict) -> dict:
         "observation_count": count,
         "latest_date": latest,
         "fetched_at": previous.get("fetched_at"),
+        "observations": previous.get("observations") or [],
     }
 
 
@@ -282,7 +329,8 @@ def choose_dollar_series(
         return yahoo_clean, "Yahoo Finance"
     if yahoo_clean is None or yahoo_clean.empty:
         return fred_clean, "FRED"
-    if yahoo_clean.index[-1] > fred_clean.index[-1] + pd.Timedelta(days=lag_days):
+    gap_days = (yahoo_clean.index[-1] - fred_clean.index[-1]).days
+    if gap_days > lag_days:
         return yahoo_clean, "Yahoo Finance"
     return fred_clean, "FRED"
 
@@ -322,10 +370,15 @@ def build_snapshot(
     moment = utc_now_iso(now)
     fetch = fetcher or default_fetcher(timeout)
     outcomes: dict[str, tuple[str, object]] = {}
+    pace_fred = fetcher is None
+    fred_start = threading.Lock()
 
     def run_one(indicator: Indicator) -> tuple[str, tuple[str, object]]:
         if indicator.source == "Computed":
             return indicator.key, ("defer", None)
+        if pace_fred and indicator.source == "FRED":
+            with fred_start:
+                time.sleep(FRED_START_GAP_SECONDS)
         try:
             series = fetch(indicator, fetch_start, fetch_end)
             if series is None or series.dropna().empty:
@@ -341,8 +394,15 @@ def build_snapshot(
             return indicator.key, ("error", exc)
 
     overall_timeout = max(600.0, float(timeout) * 20)
-    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
-        futures = [pool.submit(run_one, indicator) for _, indicator in grouped]
+    fred_items = [indicator for _, indicator in grouped if indicator.source == "FRED"]
+    other_items = [indicator for _, indicator in grouped if indicator.source != "FRED"]
+    fred_workers = max(1, min(FRED_WORKERS, workers))
+    with (
+        ThreadPoolExecutor(max_workers=fred_workers) as fred_pool,
+        ThreadPoolExecutor(max_workers=max(1, workers)) as other_pool,
+    ):
+        futures = [fred_pool.submit(run_one, indicator) for indicator in fred_items]
+        futures.extend(other_pool.submit(run_one, indicator) for indicator in other_items)
         try:
             for future in as_completed(futures, timeout=overall_timeout):
                 key, outcome = future.result()
@@ -406,6 +466,8 @@ def build_snapshot(
         entries.append(entry)
 
     _add_derived_series(data_path, grouped, entries, counts, moment, timeout)
+    fred_keys = [indicator.key for _, indicator in grouped if indicator.source == "FRED"]
+    fred_failure = fred_failure_summary(entries, fred_keys)
     catalog = {
         "generator": "build_data.py",
         "generated_at": moment,
@@ -428,6 +490,7 @@ def build_snapshot(
         "with_data": counts["ok"] + counts["preserved"],
         "entries": entries,
         "data_dir": str(data_path),
+        "fred_failure": fred_failure,
     }
 
 
@@ -555,6 +618,33 @@ def _refresh_dollar(
         by_key[indicator.key] = entry
 
 
+def fred_failure_summary(entries: list[dict], fred_keys: list[str]) -> str | None:
+    """Describe a refresh where more than half of the FRED series did not update.
+
+    Preserved and missing series both count as failures. The caller still keeps
+    the previous observations; this summary is why the job should exit non-zero.
+    """
+    if not fred_keys:
+        return None
+    by_key = {entry["key"]: entry for entry in entries}
+    failed: list[str] = []
+    for key in fred_keys:
+        entry = by_key.get(key)
+        if entry is not None and entry.get("status") == "ok":
+            continue
+        reason = "missing"
+        if entry is not None:
+            reason = entry.get("last_error") or entry.get("status") or "missing"
+        failed.append(f"{key}: {reason}")
+    if len(failed) * 2 <= len(fred_keys):
+        return None
+    lines = [
+        f"{len(failed)} of {len(fred_keys)} FRED series failed. Previous observations were kept.",
+        *failed,
+    ]
+    return "\n".join(lines)
+
+
 def format_report(report: dict) -> str:
     counts = report["counts"]
     lines = [
@@ -597,6 +687,13 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     print(format_report(report))
     print(f"Finished in {time.perf_counter() - started:.1f}s")
+    summary = report.get("fred_failure")
+    if summary:
+        print(summary, file=sys.stderr)
+        step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
+        if step_summary:
+            Path(step_summary).write_text("# FRED refresh failed\n\n```\n" + summary + "\n```\n", encoding="utf-8")
+        return 2
     if report["with_data"] == 0:
         print("No series has usable observations.")
         return 1

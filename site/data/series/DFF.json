@@ -9,12 +9,13 @@
   "transform": "none",
   "max_age_days": null,
   "section": "Rates and the curve",
+  "higher_is_bad": true,
   "group": "macro",
   "file": "series/DFF.json",
   "status": "ok",
-  "observation_count": 2495,
-  "latest_date": "2026-10-30",
-  "fetched_at": "2026-11-03T01:15:06Z",
+  "observation_count": 2498,
+  "latest_date": "2026-11-02",
+  "fetched_at": "2026-11-04T07:32:15Z",
   "observations": [
     [
       "2020-01-01",
@@ -9994,6 +9995,18 @@
     ],
     [
       "2026-10-30",
+      3.88
+    ],
+    [
+      "2026-10-31",
+      3.88
+    ],
+    [
+      "2026-11-01",
+      3.88
+    ],
+    [
+      "2026-11-02",
       3.88
     ]
   ]

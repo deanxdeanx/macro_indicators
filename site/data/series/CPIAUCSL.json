@@ -9,12 +9,13 @@
   "transform": "yoy",
   "max_age_days": null,
   "section": "Growth and labor",
+  "higher_is_bad": true,
   "group": "macro",
   "file": "series/CPIAUCSL.json",
   "status": "ok",
   "observation_count": 68,
   "latest_date": "2026-09-01",
-  "fetched_at": "2026-11-03T01:15:06Z",
+  "fetched_at": "2026-11-04T07:32:15Z",
   "observations": [
     [
       "2021-01-01",

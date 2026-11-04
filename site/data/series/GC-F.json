@@ -9,12 +9,13 @@
   "transform": "none",
   "max_age_days": null,
   "section": "Growth and labor",
+  "higher_is_bad": false,
   "group": "markets",
   "file": "series/GC-F.json",
   "status": "ok",
-  "observation_count": 1722,
-  "latest_date": "2026-11-03",
-  "fetched_at": "2026-11-03T20:07:52Z",
+  "observation_count": 1723,
+  "latest_date": "2026-11-04",
+  "fetched_at": "2026-11-04T07:32:15Z",
   "observations": [
     [
       "2020-01-02",
@@ -6902,7 +6903,11 @@
     ],
     [
       "2026-11-03",
-      3927.800049
+      3940.399902
+    ],
+    [
+      "2026-11-04",
+      4033.199951
     ]
   ]
 }

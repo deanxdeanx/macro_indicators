@@ -9,12 +9,13 @@
   "transform": "none",
   "max_age_days": null,
   "section": "Rates and the curve",
+  "higher_is_bad": true,
   "group": "macro",
   "file": "series/DGS10.json",
   "status": "ok",
-  "observation_count": 1709,
-  "latest_date": "2026-10-30",
-  "fetched_at": "2026-11-03T01:15:06Z",
+  "observation_count": 1710,
+  "latest_date": "2026-11-02",
+  "fetched_at": "2026-11-04T07:32:15Z",
   "observations": [
     [
       "2020-01-02",
@@ -6851,6 +6852,10 @@
     [
       "2026-10-30",
       4.94
+    ],
+    [
+      "2026-11-02",
+      4.91
     ]
   ]
 }
