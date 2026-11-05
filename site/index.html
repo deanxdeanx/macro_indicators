@@ -18,6 +18,7 @@
         <button id="tab-macro" type="button" role="tab" aria-selected="true" aria-controls="panel" data-tab="macro">Macro indicators</button>
         <button id="tab-markets" type="button" role="tab" aria-selected="false" aria-controls="panel" data-tab="markets" tabindex="-1">Markets</button>
         <button id="tab-companies" type="button" role="tab" aria-selected="false" aria-controls="panel" data-tab="companies" tabindex="-1">Top companies</button>
+        <button id="tab-semis" type="button" role="tab" aria-selected="false" aria-controls="panel" data-tab="semis" tabindex="-1">Semis</button>
       </div>
       <form id="controls" class="range-lockup">
         <p id="as-of" class="as-of">Loading…</p>
@@ -34,7 +35,7 @@
     <main id="panel" tabindex="-1"></main>
 
     <footer class="site-foot">
-      <p>FRED and Yahoo Finance. This page reads a daily snapshot; it does not call those sources from your browser. Daily cards show the 1-week change. YTD compares the latest print with the first observation of that calendar year. Rates show percentage-point changes (pp); claims show a count; prices show percent changes. Red means the move is risk-off for that series. A gold Held over badge means that card is still the previous good fetch.</p>
+      <p>FRED, Yahoo Finance, and SEC EDGAR. This page reads a daily snapshot; it does not call those sources from your browser. The header dates are the newest observations actually stored, not the time the refresh ran. Daily cards show the 1-week change. Rates show percentage-point changes (pp); claims show a count. Red means the move is bad for risk assets. Held-over series are listed once above the charts.</p>
     </footer>
   </div>
   <noscript>

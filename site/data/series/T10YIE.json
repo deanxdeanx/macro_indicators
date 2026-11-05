@@ -10,12 +10,13 @@
   "max_age_days": null,
   "section": "Real rates and credit",
   "higher_is_bad": true,
+  "visible": true,
   "group": "macro",
   "file": "series/T10YIE.json",
   "status": "ok",
-  "observation_count": 1711,
-  "latest_date": "2026-11-03",
-  "fetched_at": "2026-11-04T07:32:15Z",
+  "observation_count": 1712,
+  "latest_date": "2026-11-04",
+  "fetched_at": "2026-11-05T03:24:54Z",
   "observations": [
     [
       "2020-01-02",
@@ -6860,6 +6861,10 @@
     [
       "2026-11-03",
       2.3
+    ],
+    [
+      "2026-11-04",
+      2.26
     ]
   ]
 }

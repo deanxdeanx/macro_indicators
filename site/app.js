@@ -246,8 +246,13 @@ function showFatal(error) {
 }
 
 function snapshotAsOf() {
-  const generated = (state.catalog.generated_at || "").slice(0, 10);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(generated)) return generated;
+  const through = state.catalog.data_through;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(through || "")) return through;
+  const dates = [];
+  for (const entry of state.catalog.series || []) {
+    if (entry.latest_date) dates.push(entry.latest_date);
+  }
+  if (dates.length) return dates.sort().at(-1);
   return state.catalog.history_end;
 }
 
@@ -293,7 +298,8 @@ function renderBanners() {
     pieces.push(`<p class="alert warn">This snapshot was built ${formatStamp(state.catalog.generated_at)}. The scheduled refresh may not have run.</p>`);
   }
   if (preserved.length) {
-    pieces.push(`<p class="alert warn">${preserved.length} series kept their previous values because the latest refresh failed.</p>`);
+    const names = preserved.map((entry) => entry.key).join(", ");
+    pieces.push(`<p class="alert warn held">Held over from the previous run (${preserved.length}): ${escapeHtml(names)}. These cards still show their last good observation.</p>`);
   }
   if (missing.length) {
     pieces.push(`<p class="alert bad">${missing.length} series have no saved observations.</p>`);
@@ -361,6 +367,7 @@ function formatYTick(value, unit, step) {
     if (Math.abs(value) >= 10_000) return abbreviate(value, 1);
     return groupedNumber(value, step >= 1 ? 0 : 1);
   }
+  if (unit === "x") return `${groupedNumber(value, value >= 100 ? 0 : 1)}x`;
   return Math.abs(value) >= 1_000_000 ? abbreviate(value, 1) : groupedNumber(value, 0);
 }
 
@@ -370,6 +377,7 @@ function formatHoverValue(value, unit) {
   if (unit === "$") return `$${groupedNumber(value, 2)}`;
   if (unit === "$ billions") return `$${groupedNumber(value, 1)}B`;
   if (unit === "claims") return formatClaimsLevel(value);
+  if (unit === "x") return formatPe(value);
   if (unit === "index") return `${groupedNumber(value, 1)} (start = 100)`;
   return groupedNumber(value, 2);
 }
@@ -480,6 +488,21 @@ function xAxis(dates) {
   };
 }
 
+function recentWindow(rows, days) {
+  if (!rows.length) return [];
+  const end = dayMs(rows[rows.length - 1][0]);
+  const start = end - days * 86400000;
+  const recent = rows.filter((row) => dayMs(row[0]) >= start);
+  return recent.length >= 8 ? recent : rows;
+}
+
+function axisRows(entry, visible) {
+  if (entry.unit !== "claims") return visible;
+  const span = dayMs(visible[visible.length - 1][0]) - dayMs(visible[0][0]);
+  if (span <= 730 * 86400000) return visible;
+  return recentWindow(visible, 730);
+}
+
 function yAxis(values, unit) {
   const { ticks, step, low, high } = yScale(values, chartNarrow() ? 4 : 5);
   return {
@@ -514,6 +537,39 @@ function zeroLine(low, high, unit) {
   }];
 }
 
+function drawInset(elementId, rows, unit, name, focusDays = 365) {
+  const node = document.getElementById(elementId);
+  if (!node || !rows.length || typeof Plotly === "undefined") return;
+  const focus = recentWindow(rows, focusDays);
+  const y = yAxis(focus.map((row) => row[1]), unit);
+  const layout = {
+    ...baseLayout(180, 28),
+    showlegend: false,
+    annotations: [{
+      xref: "paper",
+      yref: "paper",
+      x: 0,
+      y: 1.08,
+      xanchor: "left",
+      yanchor: "bottom",
+      text: name,
+      showarrow: false,
+      font: { family: AXIS_FONT.family, size: 13, color: "#e7eeee" },
+    }],
+    xaxis: xAxis(rows.map((row) => row[0])),
+    yaxis: { ...y, side: "right" },
+  };
+  Plotly.react(node, [{
+    x: rows.map((row) => row[0]),
+    y: rows.map((row) => row[1]),
+    type: "scatter",
+    mode: "lines",
+    line: { color: "#d08c69", width: 1.5 },
+    customdata: rows.map((row) => formatHoverValue(row[1], unit)),
+    hovertemplate: `%{customdata}<extra>${escapeHtml(name)}</extra>`,
+  }], layout, PLOT_CONFIG);
+}
+
 function drawLine(entry, visible, change) {
   const node = document.getElementById(chartElementId(entry));
   if (!node || typeof Plotly === "undefined") return;
@@ -536,7 +592,7 @@ function drawLine(entry, visible, change) {
         ? "rgba(185, 87, 81, 0.05)"
         : "rgba(120, 146, 168, 0.04)";
   }
-  const yValues = visible.map((row) => row[1]);
+  const yValues = axisRows(entry, visible).map((row) => row[1]);
   const y = yAxis(yValues, entry.unit);
   const layout = {
     ...baseLayout(chartHeight("line"), 14),
@@ -693,6 +749,10 @@ function ordinal(value) {
 }
 
 function regimeMarkup() {
+  const readout = state.catalog.regime_readout
+    ? `<p class="regime-readout">${escapeHtml(state.catalog.regime_readout)}</p>`
+    : "";
+  const legend = `<p class="regime-legend">Red means the latest week was bad for risk assets: a rise when higher is bad, or a fall when higher is good. Green means the move was supportive.</p>`;
   const tiles = REGIME.map(([key, label]) => {
     const entry = byKey().get(key);
     if (!entry) {
@@ -723,7 +783,7 @@ function regimeMarkup() {
         <p class="regime-pct">${escapeHtml(pct)}</p>
       </article>`;
   }).join("");
-  return `<section class="regime" aria-label="Risk regime">${tiles}</section>`;
+  return `<section class="regime-block">${readout}${legend}<div class="regime" aria-label="Risk regime">${tiles}</div></section>`;
 }
 
 function cardMarkup(entry) {
@@ -748,21 +808,28 @@ function cardMarkup(entry) {
     ? `<p class="desc">${escapeHtml(entry.description)}</p>`
     : "";
   const hasOverlay = doc && Array.isArray(doc.overlay) && doc.overlay.length > 0;
-  const held = entry.status === "preserved";
+  const hasRrp = doc && Array.isArray(doc.rrp) && doc.rrp.length > 0;
   const warnings = [];
-  if (held && entry.last_error) {
-    const reason = String(entry.last_error).replace(/\.+$/, "");
-    const fetched = entry.fetched_at ? ` Showing the last good fetch from ${formatStamp(entry.fetched_at)}.` : "";
-    warnings.push(`<p class="alert warn held">Held over from the previous run. Latest refresh failed (${escapeHtml(reason)}).${fetched}</p>`);
+  const firstDate = observationsOf(entry)[0] && observationsOf(entry)[0][0];
+  if (firstDate && firstDate > state.start) {
+    warnings.push(`<p class="history-note">History starts ${escapeHtml(formatLong(firstDate))}, after the selected start. Earlier dates in this range are blank.</p>`);
+  }
+  const scaledClaims = entry.unit === "claims" && axisRows(entry, visible).length < visible.length;
+  if (scaledClaims) {
+    warnings.push(`<p class="history-note">The axis uses the latest two years so recent claims are visible.</p>`);
   }
   if (age.isStale) {
     warnings.push(`<p class="alert warn">Latest observation is ${age.ageDays} days old; this may be stale for ${escapeHtml(entry.frequency.toLowerCase())} data.</p>`);
   }
+  if (hasRrp) {
+    warnings.push(`<p class="history-note">Reverse repo is on this card. Its axis uses the latest four months so the recent level is visible.</p>`);
+  }
+  const rrpChart = hasRrp ? `<div class="chart inset" id="rrp-${chartElementId(entry)}"></div>` : "";
   return `
     <article class="card${hasOverlay ? " wide" : ""}">
       <div class="card-top">
         <div>
-          <h3>${escapeHtml(entry.name)}${held ? `<span class="held-badge">Held over</span>` : ""}</h3>
+          <h3>${escapeHtml(entry.name)}</h3>
           <p class="meta">${escapeHtml(entry.key)} · ${escapeHtml(entry.frequency)} · ${escapeHtml(entry.source)}</p>
           <p class="as-of-line">As of ${escapeHtml(formatLong(metrics.latestDate))}</p>
           ${description}
@@ -774,6 +841,7 @@ function cardMarkup(entry) {
         </div>
       </div>
       <div class="chart${hasOverlay ? " dual" : ""}" id="${chartElementId(entry)}"></div>
+      ${rrpChart}
       <div class="card-foot">
         <span>YTD ${escapeHtml(formatChange(metrics.ytdChange, entry.change_mode))}</span>
         <span>AS OF ${escapeHtml(formatLong(metrics.latestDate).toUpperCase())} · ${age.ageDays}D OLD</span>
@@ -794,6 +862,15 @@ function bindCards(entries) {
       drawDual(entry, visible, overlay, doc.overlay_name || "Overlay", doc.overlay_unit || "points");
     } else {
       drawLine(entry, visible, headlineMove(entry, history).value);
+    }
+    if (doc && Array.isArray(doc.rrp) && doc.rrp.length) {
+      drawInset(
+        `rrp-${chartElementId(entry)}`,
+        rowsBetween(doc.rrp, state.start, state.end),
+        doc.rrp_unit || "$ billions",
+        doc.rrp_name || "Overnight reverse repo",
+        120,
+      );
     }
   }
   panelEl().querySelectorAll("[data-export]").forEach((button) => {
@@ -864,11 +941,131 @@ function comparisonMarkup(entries) {
     </article>`;
 }
 
+function formatCap(value) {
+  if (!Number.isFinite(value)) return "n/a";
+  if (Math.abs(value) >= 1e12) return `$${(value / 1e12).toFixed(2)}T`;
+  return `$${(value / 1e9).toFixed(2)}B`;
+}
+
+function formatPe(value) {
+  return Number.isFinite(value) ? `${Number(value).toFixed(1)}x` : "n/a";
+}
+
+function semiCard(entry) {
+  const doc = state.series.get(entry.key);
+  if (!doc || doc.loadError || !Array.isArray(doc.observations) || !doc.observations.length) {
+    const reason = (doc && doc.loadError) || entry.last_error || "No data returned.";
+    return `<article class="card"><h3>${escapeHtml(entry.name)}</h3><p class="alert bad">${escapeHtml(reason)}</p></article>`;
+  }
+  const latest = doc.observations[doc.observations.length - 1];
+  return `
+    <article class="card wide">
+      <div class="card-top">
+        <div>
+          <h3>${escapeHtml(entry.name)}</h3>
+          <p class="meta">${escapeHtml(entry.ticker || entry.key)} · monthly · ${escapeHtml(formatCap(entry.market_cap))}</p>
+          <p class="as-of-line">As of ${escapeHtml(formatLong(latest[0]))}</p>
+          <p class="desc">${escapeHtml(entry.description || doc.description || "")}</p>
+        </div>
+        <div class="latest">
+          <span class="kicker">P/E</span>
+          <span class="value">${escapeHtml(formatPe(entry.pe))}</span>
+          <span class="delta">10Y median ${escapeHtml(formatPe(entry.median_pe))}</span>
+        </div>
+      </div>
+      <div class="chart dual" id="${chartElementId(entry)}"></div>
+    </article>`;
+}
+
+function drawSemi(entry) {
+  const node = document.getElementById(chartElementId(entry));
+  const doc = state.series.get(entry.key);
+  if (!node || !doc || typeof Plotly === "undefined") return;
+  const prices = doc.observations || [];
+  const pe = doc.pe_observations || [];
+  if (!prices.length) return;
+  const layout = {
+    ...baseLayout(chartNarrow() ? 320 : 360, 48),
+    showlegend: true,
+    legend: {
+      orientation: "h",
+      yanchor: "bottom",
+      y: 1.02,
+      x: 0,
+      font: { family: AXIS_FONT.family, size: 13, color: "#e7eeee" },
+    },
+    xaxis: xAxis(prices.map((row) => row[0])),
+    yaxis: { ...yAxis(prices.map((row) => row[1]), "$"), side: "left" },
+    yaxis2: {
+      ...(pe.length ? yAxis(pe.map((row) => row[1]), "x") : yAxis([0, 1], "x")),
+      overlaying: "y",
+      side: "right",
+    },
+  };
+  const traces = [{
+    x: prices.map((row) => row[0]),
+    y: prices.map((row) => row[1]),
+    type: "scatter",
+    mode: "lines",
+    name: "Price",
+    line: { color: "#7c91c9", width: 1.7 },
+    customdata: prices.map((row) => formatHoverValue(row[1], "$")),
+    hovertemplate: "%{customdata}<extra>Price</extra>",
+  }];
+  if (pe.length) {
+    traces.push({
+      x: pe.map((row) => row[0]),
+      y: pe.map((row) => row[1]),
+      type: "scatter",
+      mode: "lines",
+      name: "P/E",
+      connectgaps: false,
+      yaxis: "y2",
+      line: { color: "#d08c69", width: 1.5 },
+      customdata: pe.map((row) => formatPe(row[1])),
+      hovertemplate: "%{customdata}<extra>P/E</extra>",
+    });
+  }
+  Plotly.react(node, traces, layout, PLOT_CONFIG);
+}
+
+function renderSemis(libraryNote) {
+  const entries = groupEntries("semis");
+  const body = entries.map((entry) => `
+    <tr>
+      <td>${escapeHtml(entry.name)}</td>
+      <td>${escapeHtml(entry.ticker || entry.key)}</td>
+      <td>${escapeHtml(formatCap(entry.market_cap))}</td>
+      <td>${escapeHtml(Number.isFinite(entry.price) ? formatValue(entry.price, "$", false) : "n/a")}</td>
+      <td>${escapeHtml(formatPe(entry.pe))}</td>
+      <td>${escapeHtml(formatPe(entry.median_pe))}</td>
+      <td>${Number.isFinite(entry.pe_percentile) ? `${ordinal(entry.pe_percentile)}` : "n/a"}</td>
+    </tr>`).join("");
+  panelEl().innerHTML = `
+    ${libraryNote}
+    <section class="macro-section">
+      <h2 class="section-title">Semiconductor multiples</h2>
+      <p class="regime-legend">Top 10 US-listed names by market cap at build time (SEC shares × Yahoo price). TSMC's ADR is five ordinary shares. Monthly price against trailing P/E for ten years. P/E is blank where trailing EPS is negative or missing. These charts use that ten-year file.</p>
+      <div class="table-scroll">
+        <table class="semi-table">
+          <thead><tr><th>Company</th><th>Ticker</th><th>Market cap</th><th>Price</th><th>P/E</th><th>10Y median</th><th>10Y pct</th></tr></thead>
+          <tbody>${body || `<tr><td colspan="7">No semiconductor snapshot is stored yet.</td></tr>`}</tbody>
+        </table>
+      </div>
+    </section>
+    <div class="card-grid">${entries.map(semiCard).join("")}</div>`;
+  entries.forEach(drawSemi);
+}
+
 function renderPanel() {
   const libraryNote = typeof Plotly === "undefined"
     ? `<p class="alert warn">The chart library did not load. Values are still shown, but the lines cannot be drawn.</p>`
     : "";
   purgeCharts(panelEl());
+  if (state.tab === "semis") {
+    renderSemis(libraryNote);
+    return;
+  }
   if (state.tab === "companies") {
     const entries = groupEntries("companies");
     if (!state.selectionReady) {
@@ -912,7 +1109,7 @@ function renderPanel() {
     return;
   }
 
-  const entries = groupEntries(state.tab);
+  const entries = groupEntries(state.tab).filter((entry) => entry.visible !== false);
   if (state.tab !== "macro") {
     panelEl().innerHTML = `${libraryNote}<div class="card-grid">${entries.map(cardMarkup).join("")}</div>`;
     bindCards(entries);
@@ -949,7 +1146,7 @@ function draw() {
   renderBanners();
   renderPanel();
   window.scrollTo(0, scrollY);
-  asOfEl().textContent = `Data as of ${formatLong(state.end)}`;
+  asOfEl().textContent = state.catalog.as_of_label || `Data through ${formatLong(state.end)}`;
 }
 
 function selectTab(tab, options = {}) {
@@ -999,7 +1196,7 @@ function bindChrome() {
 async function init() {
   bindChrome();
   const hash = location.hash.replace("#", "");
-  if (hash === "markets" || hash === "companies" || hash === "macro") {
+  if (hash === "markets" || hash === "companies" || hash === "macro" || hash === "semis") {
     selectTab(hash, { skipHash: true });
   }
   try {
@@ -1011,7 +1208,7 @@ async function init() {
     return;
   }
   setRangeFromCatalog();
-  asOfEl().textContent = `Data as of ${formatLong(state.end)}`;
+  asOfEl().textContent = state.catalog.as_of_label || `Data through ${formatLong(state.end)}`;
   await ensureTab(state.tab);
   draw();
   const rest = state.catalog.series.filter((entry) => !state.series.has(entry.key));
