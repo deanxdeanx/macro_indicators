@@ -20,7 +20,9 @@ Finance.
 - Latest value, a 1-week change on daily series, and year-to-date change.
 - A regime strip on the Macro tab: 10-year real yield, 2s10s, high-yield
   spread, the broad dollar, net liquidity, and VIX, each with the 1-week and
-  1-month change and its place in the 5-year range.
+  1-month change and its place in the 5-year range, plus a one-line readout.
+- Semis: the ten largest US-listed semiconductor names, with monthly price
+  against trailing P/E for ten years.
 - A start date, with the window ending on the snapshot date, plus CSV export and frequency-aware stale warnings.
 - The dark Macro Terminal layout, including on a phone.
 
@@ -74,6 +76,8 @@ snapshot stays on the site.
 - 10-Year Treasury Yield: `DGS10`, percent
 - 10Y-2Y Treasury Spread: `T10Y2Y`, percentage points
 - 10Y-3M Treasury Spread: `T10Y3M`, percentage points
+- 2-Year minus Fed Funds: `DGS2` minus `DFF`
+- 10-Year Term Premium: `THREEFYTP10`, Kim-Wright. ACM is not on FRED.
 - 10-Year Real Yield: `DFII10`, percent
 - 10-Year Breakeven Inflation: `T10YIE`, percent
 - US High Yield Spread: `BAMLH0A0HYM2`, option-adjusted spread, percent
@@ -99,6 +103,17 @@ The GDP series is already an annualized real-GDP growth rate. The M2 series is
 the active monthly, seasonally adjusted series. The company list is the basket
 in `data_sources.py`. Market-cap rankings move, so review that list when the
 names should change.
+
+The Semis tab ranks a fixed US-listed universe at build time. Market cap is
+the latest SEC share count times the Yahoo price. TSMC's ADR is five ordinary
+shares, so that count is divided by five and EPS is multiplied by five. ASML's
+ADR is one share; euro EPS is converted with FRED `DEXUSEU`. Quarterly diluted
+EPS from EDGAR is summed into a trailing twelve months when four consecutive
+quarters exist. A missing fiscal fourth quarter is the full year minus the
+other three. Names that only file annual EPS, such as TSMC's 20-F, carry that
+full-year figure forward. Splits after the filing date scale older EPS onto
+today's share count. Negative or missing EPS leaves a gap instead of a negative
+P/E. A failed fetch keeps the previous company file.
 
 ## Run the site locally
 

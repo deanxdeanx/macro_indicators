@@ -58,6 +58,7 @@ class Indicator:
     section: str = "Growth and labor"
     scale: str = "none"
     higher_is_bad: bool = False
+    visible: bool = True
 
 
 MACRO_INDICATORS = (
@@ -175,6 +176,27 @@ MACRO_INDICATORS = (
         section="Rates and the curve",
     ),
     Indicator(
+        "THREEFYTP10",
+        "10-Year Term Premium",
+        "FRED",
+        "%",
+        "Daily",
+        change_mode="points",
+        description="Kim-Wright term premium on the 10-year Treasury. ACM is not published on FRED.",
+        section="Rates and the curve",
+        higher_is_bad=True,
+    ),
+    Indicator(
+        "DGS2DFF",
+        "2-Year minus Fed Funds",
+        "Computed",
+        "%",
+        "Daily",
+        change_mode="points",
+        description="DGS2 minus the daily effective federal funds rate.",
+        section="Rates and the curve",
+    ),
+    Indicator(
         "DFII10",
         "10-Year Real Yield",
         "FRED",
@@ -255,8 +277,9 @@ MACRO_INDICATORS = (
         "FRED",
         "$ billions",
         "Daily",
-        description="Treasury securities sold by the Fed in overnight reverse repo.",
+        description="Treasury securities sold by the Fed in overnight reverse repo. Shown on the net liquidity card.",
         section="Liquidity",
+        visible=False,
     ),
     Indicator(
         "WTREGEN",
@@ -608,20 +631,22 @@ def _has_finite_number(values: Iterable[object] | None) -> bool:
     return False
 
 
-def _yahoo_close_values(indicators: dict) -> list | None:
+def _yahoo_close_values(indicators: dict, adjusted: bool = True) -> list | None:
     """Prefer adjusted closes, matching the adjusted prices the dashboard charts."""
     adj_groups = indicators.get("adjclose") or []
     quote_groups = indicators.get("quote") or []
-    adjusted = adj_groups[0].get("adjclose") if adj_groups and isinstance(adj_groups[0], dict) else None
+    adjusted_values = adj_groups[0].get("adjclose") if adj_groups and isinstance(adj_groups[0], dict) else None
     closes = quote_groups[0].get("close") if quote_groups and isinstance(quote_groups[0], dict) else None
-    if _has_finite_number(adjusted):
-        return list(adjusted)
+    if adjusted and _has_finite_number(adjusted_values):
+        return list(adjusted_values)
     if closes is not None:
         return list(closes)
+    if _has_finite_number(adjusted_values):
+        return list(adjusted_values)
     return None
 
 
-def parse_yahoo_chart(payload: dict, ticker: str) -> pd.Series:
+def parse_yahoo_chart(payload: dict, ticker: str, adjusted: bool = True) -> pd.Series:
     """Convert one Yahoo v8 chart payload into a daily adjusted-close series."""
     if not isinstance(payload, dict) or not isinstance(payload.get("chart"), dict):
         raise DataSourceError(f"Yahoo Finance returned an invalid response for {ticker}.")
@@ -645,7 +670,7 @@ def parse_yahoo_chart(payload: dict, ticker: str) -> pd.Series:
     result = results[0]
     timestamps = result.get("timestamp") or []
     indicators = result.get("indicators") if isinstance(result.get("indicators"), dict) else {}
-    closes = _yahoo_close_values(indicators)
+    closes = _yahoo_close_values(indicators, adjusted=adjusted)
     if not timestamps or closes is None or len(closes) != len(timestamps):
         raise DataSourceError(f"Yahoo Finance returned no price data for {ticker}.")
 
@@ -681,6 +706,7 @@ def fetch_yahoo_chart_series(
     timeout: float = 12,
     attempts: int = 2,
     retry_backoff: float = 0.4,
+    adjusted: bool = True,
 ) -> pd.Series:
     """Fetch one Yahoo series from the chart API with a hard timeout.
 
@@ -729,7 +755,7 @@ def fetch_yahoo_chart_series(
                     raise DataSourceError(
                         f"Yahoo Finance returned unreadable data for {ticker}."
                     ) from exc
-                return parse_yahoo_chart(payload, ticker)
+                return parse_yahoo_chart(payload, ticker, adjusted=adjusted)
             except (DataSourceError, requests.RequestException) as exc:
                 last_error = exc
                 logger.warning(
@@ -810,6 +836,116 @@ def range_percentile(series: pd.Series, years: int = 5) -> float | None:
     if high == low:
         return 50.0
     return (latest - low) / (high - low) * 100
+
+
+def _long_date(iso: str | None) -> str:
+    if not iso:
+        return "n/a"
+    year, month, day = iso.split("-")
+    months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    return f"{int(day):02d} {months[int(month) - 1]} {year}"
+
+
+def source_dates(entries: list[dict]) -> dict[str, str | None]:
+    """Observation dates for the header. The run timestamp is not a data date."""
+    fred: list[str] = []
+    yahoo: list[str] = []
+    for entry in entries:
+        latest = entry.get("latest_date")
+        if not latest:
+            continue
+        if entry.get("source") == "FRED" and entry.get("frequency") == "Daily":
+            fred.append(latest)
+        elif entry.get("source") == "Yahoo Finance" and entry.get("group") in {"markets", "companies"}:
+            yahoo.append(latest)
+    fred_oldest = min(fred) if fred else None
+    fred_as_of = max(fred) if fred else None
+    yahoo_oldest = min(yahoo) if yahoo else None
+    yahoo_as_of = max(yahoo) if yahoo else None
+    data_dates = [item for item in (fred_as_of, yahoo_as_of) if item]
+    return {
+        "fred_oldest": fred_oldest,
+        "fred_as_of": fred_as_of,
+        "yahoo_oldest": yahoo_oldest,
+        "yahoo_as_of": yahoo_as_of,
+        "data_through": max(data_dates) if data_dates else None,
+    }
+
+
+def as_of_label(dates: dict[str, str | None]) -> str:
+    """Header text. A wide FRED span shows the oldest and newest observation."""
+    oldest = dates.get("fred_oldest")
+    newest = dates.get("fred_as_of")
+    if oldest and newest and oldest != newest:
+        gap = (date.fromisoformat(newest) - date.fromisoformat(oldest)).days
+        fred = f"{_long_date(oldest)}–{_long_date(newest)}" if gap > 3 else _long_date(newest)
+    else:
+        fred = _long_date(newest)
+    return f"FRED as of {fred} · Yahoo as of {_long_date(dates.get('yahoo_as_of'))}"
+
+
+def regime_readout(entries: list[dict]) -> str:
+    """One rule-based line from the regime-strip series."""
+    by_key = {entry["key"]: entry for entry in entries}
+
+    def week(key: str) -> float | None:
+        value = by_key.get(key, {}).get("week_change")
+        return float(value) if isinstance(value, (int, float)) else None
+
+    def percentile(key: str) -> float | None:
+        value = by_key.get(key, {}).get("range_percentile")
+        return float(value) if isinstance(value, (int, float)) else None
+
+    net = week("NETLIQ")
+    if net is None:
+        liquidity = "liquidity n/a"
+    elif net <= -0.3:
+        liquidity = "liquidity falling"
+    elif net >= 0.3:
+        liquidity = "liquidity rising"
+    else:
+        liquidity = "liquidity steady"
+
+    real = percentile("DFII10")
+    if real is None:
+        rates = "real rates n/a"
+    elif real >= 60:
+        rates = "real rates high"
+    elif real <= 40:
+        rates = "real rates low"
+    else:
+        rates = "real rates mid-range"
+
+    credit_change = week("BAMLH0A0HYM2")
+    if credit_change is None:
+        credit = "credit n/a"
+    elif credit_change >= 0.05:
+        credit = "credit widening"
+    elif credit_change <= -0.05:
+        credit = "credit narrowing"
+    else:
+        credit = "credit steady"
+
+    dollar_change = week("DTWEXBGS")
+    if dollar_change is None:
+        dollar = "dollar n/a"
+    elif dollar_change >= 0.15:
+        dollar = "dollar firm"
+    elif dollar_change <= -0.15:
+        dollar = "dollar soft"
+    else:
+        dollar = "dollar steady"
+
+    parts = [liquidity, rates, credit, dollar]
+    stress = sum(part in {"liquidity falling", "real rates high", "credit widening", "dollar firm"} for part in parts)
+    ease = sum(part in {"liquidity rising", "real rates low", "credit narrowing", "dollar soft"} for part in parts)
+    if stress >= 2 and stress > ease:
+        stance = "tightening"
+    elif ease >= 2 and ease > stress:
+        stance = "easing"
+    else:
+        stance = "mixed"
+    return " · ".join(parts) + f" → {stance}"
 
 
 def latest_metrics(series: pd.Series, change_mode: str = "percent") -> dict[str, float | pd.Timestamp]:

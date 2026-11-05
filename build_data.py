@@ -28,10 +28,13 @@ from data_sources import (
     Indicator,
     company_indicators,
     fetch_fred_series,
+    as_of_label,
     fetch_yahoo_chart_series,
     lagged_change,
     observation_window,
     range_percentile,
+    regime_readout,
+    source_dates,
 )
 
 
@@ -137,6 +140,7 @@ def metadata_for(indicator: Indicator, group: str) -> dict:
         "max_age_days": indicator.max_age_days,
         "section": indicator.section,
         "higher_is_bad": indicator.higher_is_bad,
+        "visible": indicator.visible,
         "group": group,
         "file": f"series/{series_file_id(indicator.key)}.json",
     }
@@ -221,6 +225,7 @@ def catalog_entry(
         "max_age_days": document.get("max_age_days"),
         "section": document.get("section") or "",
         "higher_is_bad": bool(document.get("higher_is_bad")),
+        "visible": document.get("visible", True) is not False,
         "group": document["group"],
         "file": document["file"],
         "status": status,
@@ -345,6 +350,7 @@ def build_snapshot(
     indicators: list[tuple[str, Indicator]] | None = None,
     fetcher=None,
     now: datetime | None = None,
+    include_semis: bool | None = None,
 ) -> dict:
     """Fetch every dashboard series and write ``catalog.json`` plus series files.
 
@@ -352,7 +358,10 @@ def build_snapshot(
     The default fetcher calls FRED and the Yahoo chart API directly.
     """
     data_path = Path(data_dir)
+    full_snapshot = indicators is None
     grouped = indicator_groups() if indicators is None else list(indicators)
+    if include_semis is None:
+        include_semis = full_snapshot
     file_ids = [series_file_id(indicator.key) for _, indicator in grouped]
     if len(file_ids) != len(set(file_ids)):
         raise ValueError("Series file ids collide. Refusing to overwrite one series with another.")
@@ -466,14 +475,24 @@ def build_snapshot(
         entries.append(entry)
 
     _add_derived_series(data_path, grouped, entries, counts, moment, timeout)
+    if include_semis:
+        _add_semiconductors(data_path, entries, counts, moment, timeout)
     fred_keys = [indicator.key for _, indicator in grouped if indicator.source == "FRED"]
     fred_failure = fred_failure_summary(entries, fred_keys)
+    dates = source_dates(entries)
     catalog = {
         "generator": "build_data.py",
         "generated_at": moment,
         "history_start": fetch_start.isoformat(),
         "history_end": fetch_end.isoformat(),
         "default_start": view_start.isoformat(),
+        "fred_oldest": dates["fred_oldest"],
+        "fred_as_of": dates["fred_as_of"],
+        "yahoo_oldest": dates["yahoo_oldest"],
+        "yahoo_as_of": dates["yahoo_as_of"],
+        "data_through": dates["data_through"],
+        "as_of_label": as_of_label(dates),
+        "regime_readout": regime_readout(entries),
         "counts": counts,
         "series": entries,
     }
@@ -525,6 +544,8 @@ def _add_derived_series(
         _write_net_liquidity(data_path, indicators["NETLIQ"], entries, by_key, counts, moment)
     if "DTWEXBGS" in indicators:
         _refresh_dollar(data_path, indicators["DTWEXBGS"], entries, by_key, counts, moment, timeout)
+    if "DGS2DFF" in indicators:
+        _write_funds_spread(data_path, indicators["DGS2DFF"], entries, by_key, counts, moment)
 
 
 def _write_net_liquidity(
@@ -556,8 +577,63 @@ def _write_net_liquidity(
             document["overlay_name"] = "S&P 500"
             document["overlay_unit"] = "points"
             document["overlay"] = observations_from_series(aligned)
+        document["rrp_name"] = "Overnight reverse repo"
+        document["rrp_unit"] = "$ billions"
+        document["rrp"] = observations_from_series(rrp.dropna().sort_index())
         if write_json(path, document):
             pass
+        entry = catalog_entry(document, status="ok", last_attempt_at=moment, last_error=None)
+        counts["ok"] += 1
+    except Exception as exc:
+        message = _public_error(exc)
+        if previous_is_usable(previous):
+            entry = catalog_entry(
+                _catalog_source_from_previous(meta, previous),
+                status="preserved",
+                last_attempt_at=moment,
+                last_error=message,
+            )
+            counts["preserved"] += 1
+        else:
+            document = series_document(meta, [], status="error", fetched_at=None)
+            write_json(path, document)
+            entry = catalog_entry(document, status="error", last_attempt_at=moment, last_error=message)
+            counts["error"] += 1
+    entries.append(entry)
+    by_key[indicator.key] = entry
+
+
+def funds_spread(two_year: pd.Series, funds: pd.Series) -> pd.Series:
+    """2-year Treasury yield minus the effective federal funds rate, in percentage points."""
+    frame = pd.concat({"two_year": two_year, "funds": funds}, axis=1).dropna(how="any")
+    spread = (frame["two_year"] - frame["funds"]).dropna()
+    spread.name = "DGS2DFF"
+    return spread
+
+
+def _write_funds_spread(
+    data_path: Path,
+    grouped_indicator: tuple[str, Indicator],
+    entries: list[dict],
+    by_key: dict[str, dict],
+    counts: dict[str, int],
+    moment: str,
+) -> None:
+    group, indicator = grouped_indicator
+    meta = metadata_for(indicator, group)
+    path = data_path / meta["file"]
+    previous = load_json(path)
+    try:
+        two_year = _scaled_component(data_path, "DGS2", "none")
+        funds = _scaled_component(data_path, "DFF", "none")
+        if two_year is None or funds is None:
+            raise DataSourceError("2-year minus fed funds needs DGS2 and DFF.")
+        spread = funds_spread(two_year, funds)
+        observations = observations_from_series(spread)
+        if not observations:
+            raise DataSourceError("2-year minus fed funds had no overlapping dates.")
+        document = series_document(meta, observations, status="ok", fetched_at=moment)
+        write_json(path, document)
         entry = catalog_entry(document, status="ok", last_attempt_at=moment, last_error=None)
         counts["ok"] += 1
     except Exception as exc:
@@ -616,6 +692,74 @@ def _refresh_dollar(
         index = entries.index(by_key[indicator.key])
         entries[index] = entry
         by_key[indicator.key] = entry
+
+
+def _add_semiconductors(
+    data_path: Path,
+    entries: list[dict],
+    counts: dict[str, int],
+    moment: str,
+    timeout: float,
+) -> None:
+    """Rank the semiconductor universe and write the top 10. A failure keeps the previous file."""
+    from semis import SEMI_UNIVERSE, build_semi_document, catalog_semi, quote_market_cap
+
+    previous_by_key = {
+        entry["key"]: entry for entry in entries if entry.get("group") == "semis"
+    }
+    # Drop any semis already on the list; this run rebuilds that group.
+    entries[:] = [entry for entry in entries if entry.get("group") != "semis"]
+    measured: list[tuple[dict, float | None]] = []
+    for candidate in SEMI_UNIVERSE:
+        try:
+            measured.append((candidate, quote_market_cap(candidate, timeout=timeout)))
+        except Exception as exc:
+            logger.warning("semi_cap_failed ticker=%s error=%s", candidate["ticker"], type(exc).__name__)
+            previous = load_json(data_path / "semis" / f"{candidate['ticker']}.json")
+            stored = previous.get("market_cap") if isinstance(previous, dict) else None
+            measured.append((candidate, float(stored) if stored else None))
+    ranked = sorted(
+        [(candidate, cap) for candidate, cap in measured if cap],
+        key=lambda item: item[1],
+        reverse=True,
+    )[:10]
+    if not ranked:
+        for entry in previous_by_key.values():
+            entries.append(entry)
+        return
+    for candidate, _cap in ranked:
+        path = data_path / "semis" / f"{candidate['ticker']}.json"
+        previous = load_json(path)
+        try:
+            document = build_semi_document(candidate, timeout=timeout)
+            document["status"] = "ok"
+            document["fetched_at"] = moment
+            write_json(path, document)
+            entry = catalog_semi(document, status="ok", last_error=None, fetched_at=moment)
+            counts["ok"] += 1
+        except Exception as exc:
+            message = _public_error(exc)
+            logger.error("semi_fetch_failed ticker=%s error=%s", candidate["ticker"], type(exc).__name__)
+            if previous_is_usable(previous):
+                entry = catalog_semi(previous, status="preserved", last_error=message, fetched_at=previous.get("fetched_at"))
+                entry["last_attempt_at"] = moment
+                counts["preserved"] += 1
+            else:
+                entry = catalog_semi(
+                    {
+                        "key": candidate["ticker"],
+                        "name": candidate["name"],
+                        "description": message,
+                        "observation_count": 0,
+                        "latest_date": None,
+                    },
+                    status="error",
+                    last_error=message,
+                    fetched_at=None,
+                )
+                entry["last_attempt_at"] = moment
+                counts["error"] += 1
+        entries.append(entry)
 
 
 def fred_failure_summary(entries: list[dict], fred_keys: list[str]) -> str | None:
