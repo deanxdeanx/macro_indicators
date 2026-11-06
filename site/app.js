@@ -112,6 +112,10 @@ function formatValue(value, unit, compact = false) {
 function formatChange(value, changeMode) {
   if (!Number.isFinite(value)) return "N/A";
   if (changeMode === "count") return formatClaimsChange(value);
+  if (changeMode === "level") {
+    const sign = value >= 0 ? "+" : "-";
+    return `${sign}${Math.abs(value).toFixed(2)}`;
+  }
   const suffix = changeMode === "points" ? " pp" : "%";
   const sign = value >= 0 ? "+" : "-";
   return `${sign}${Math.abs(value).toFixed(2)}${suffix}`;
@@ -168,7 +172,7 @@ function latestMetrics(rows, changeMode) {
   }
   let previousChange = NaN;
   let ytdChange = NaN;
-  if (changeMode === "points" || changeMode === "count") {
+  if (changeMode === "points" || changeMode === "count" || changeMode === "level") {
     if (rows.length > 1) previousChange = latest - rows[rows.length - 2][1];
     if (yearCount > 1 && firstOfYear !== null) ytdChange = latest - firstOfYear;
   } else if (rows.length > 1) {
@@ -701,7 +705,15 @@ const REGIME = [
   ["BAMLH0A0HYM2", "HY spread"],
   ["DTWEXBGS", "Broad dollar"],
   ["NETLIQ", "Net liquidity"],
+  ["NFCI", "NFCI"],
   ["^VIX", "VIX"],
+];
+const SECTION_ORDER = [
+  "Liquidity",
+  "Real rates and credit",
+  "Rates and the curve",
+  "Dollar",
+  "Growth and labor",
 ];
 
 function dayMs(iso) {
@@ -749,6 +761,9 @@ function ordinal(value) {
 }
 
 function regimeMarkup() {
+  const chip = state.catalog.fred_chip
+    ? `<p class="fred-chip${String(state.catalog.fred_chip).startsWith("FRED refresh failed") ? " severe" : ""}">${escapeHtml(state.catalog.fred_chip)}</p>`
+    : "";
   const readout = state.catalog.regime_readout
     ? `<p class="regime-readout">${escapeHtml(state.catalog.regime_readout)}</p>`
     : "";
@@ -783,7 +798,7 @@ function regimeMarkup() {
         <p class="regime-pct">${escapeHtml(pct)}</p>
       </article>`;
   }).join("");
-  return `<section class="regime-block">${readout}${legend}<div class="regime" aria-label="Risk regime">${tiles}</div></section>`;
+  return `<section class="regime-block"><div class="regime-head">${readout}${chip}</div>${legend}<div class="regime" aria-label="Risk regime">${tiles}</div></section>`;
 }
 
 function cardMarkup(entry) {
@@ -1125,6 +1140,12 @@ function renderPanel() {
     }
     section.entries.push(entry);
   }
+  const order = state.catalog.section_order || SECTION_ORDER;
+  sections.sort((a, b) => {
+    const left = order.indexOf(a.name);
+    const right = order.indexOf(b.name);
+    return (left < 0 ? 99 : left) - (right < 0 ? 99 : right);
+  });
   panelEl().innerHTML = `${regimeMarkup()}${libraryNote}${sections.map((section) => `
     <section class="macro-section">
       <h2 class="section-title">${escapeHtml(section.name)}</h2>

@@ -293,6 +293,39 @@ MACRO_INDICATORS = (
         scale="millions_to_billions",
     ),
     Indicator(
+        "SOFR",
+        "Secured Overnight Financing Rate",
+        "FRED",
+        "%",
+        "Daily",
+        change_mode="points",
+        description="Used with the interest rate on reserve balances to build the funding spread.",
+        section="Liquidity",
+        visible=False,
+    ),
+    Indicator(
+        "IORB",
+        "Interest on Reserve Balances",
+        "FRED",
+        "%",
+        "Daily",
+        change_mode="points",
+        description="Used with SOFR to build the funding spread.",
+        section="Liquidity",
+        visible=False,
+    ),
+    Indicator(
+        "SOFRIORB",
+        "SOFR minus IORB",
+        "Computed",
+        "%",
+        "Daily",
+        change_mode="points",
+        description="Secured overnight financing rate minus the interest rate on reserve balances.",
+        section="Liquidity",
+        higher_is_bad=True,
+    ),
+    Indicator(
         "NETLIQ",
         "Net Liquidity",
         "Computed",
@@ -300,6 +333,18 @@ MACRO_INDICATORS = (
         "Daily",
         description="Fed assets minus the Treasury general account minus overnight reverse repo, in billions. Plotted against the S&P 500.",
         section="Liquidity",
+    ),
+    Indicator(
+        "NFCI",
+        "Chicago Fed Financial Conditions",
+        "FRED",
+        "index",
+        "Weekly",
+        change_mode="level",
+        description="National Financial Conditions Index. Positive values are tighter than average.",
+        max_age_days=14,
+        section="Liquidity",
+        higher_is_bad=True,
     ),
     Indicator(
         "DTWEXBGS",
@@ -324,6 +369,15 @@ MACRO_INDICATORS = (
         higher_is_bad=True,
     ),
 )
+
+MACRO_SECTION_ORDER = (
+    "Liquidity",
+    "Real rates and credit",
+    "Rates and the curve",
+    "Dollar",
+    "Growth and labor",
+)
+
 
 MARKET_INDICATORS = (
     Indicator("^GSPC", "S&P 500 Index", "Yahoo Finance", "points", "Daily"),
@@ -884,6 +938,19 @@ def as_of_label(dates: dict[str, str | None]) -> str:
     return f"FRED as of {fred} · Yahoo as of {_long_date(dates.get('yahoo_as_of'))}"
 
 
+def fred_refresh_chip(entries: list[dict]) -> str | None:
+    """Short label when FRED series were held over. Majority failures use the stronger wording."""
+    fred = [entry for entry in entries if entry.get("source") == "FRED"]
+    if not fred:
+        return None
+    failed = [entry for entry in fred if entry.get("status") != "ok"]
+    if not failed:
+        return None
+    if len(failed) * 2 > len(fred):
+        return "FRED refresh failed — tiles may be stale"
+    return "Some FRED series held over"
+
+
 def regime_readout(entries: list[dict]) -> str:
     """One rule-based line from the regime-strip series."""
     by_key = {entry["key"]: entry for entry in entries}
@@ -937,8 +1004,23 @@ def regime_readout(entries: list[dict]) -> str:
         dollar = "dollar steady"
 
     parts = [liquidity, rates, credit, dollar]
-    stress = sum(part in {"liquidity falling", "real rates high", "credit widening", "dollar firm"} for part in parts)
-    ease = sum(part in {"liquidity rising", "real rates low", "credit narrowing", "dollar soft"} for part in parts)
+    stress_labels = {"liquidity falling", "real rates high", "credit widening", "dollar firm"}
+    ease_labels = {"liquidity rising", "real rates low", "credit narrowing", "dollar soft"}
+    if "NFCI" in by_key:
+        conditions_pct = percentile("NFCI")
+        if conditions_pct is None:
+            conditions = "conditions n/a"
+        elif conditions_pct >= 60:
+            conditions = "conditions tight"
+        elif conditions_pct <= 40:
+            conditions = "conditions easy"
+        else:
+            conditions = "conditions neutral"
+        parts.append(conditions)
+        stress_labels = stress_labels | {"conditions tight"}
+        ease_labels = ease_labels | {"conditions easy"}
+    stress = sum(part in stress_labels for part in parts)
+    ease = sum(part in ease_labels for part in parts)
     if stress >= 2 and stress > ease:
         stance = "tightening"
     elif ease >= 2 and ease > stress:
@@ -956,7 +1038,7 @@ def latest_metrics(series: pd.Series, change_mode: str = "percent") -> dict[str,
 
     latest = float(series.iloc[-1])
     current_year = series[series.index.year == series.index[-1].year]
-    if change_mode in {"points", "count"}:
+    if change_mode in {"points", "count", "level"}:
         previous_change = float(latest - series.iloc[-2]) if len(series) > 1 else float("nan")
         ytd_change = float(latest - current_year.iloc[0]) if len(current_year) > 1 else float("nan")
     else:

@@ -14,9 +14,9 @@
   "group": "macro",
   "file": "series/WTREGEN.json",
   "status": "ok",
-  "observation_count": 357,
-  "latest_date": "2026-10-28",
-  "fetched_at": "2026-11-05T03:24:54Z",
+  "observation_count": 358,
+  "latest_date": "2026-11-04",
+  "fetched_at": "2026-11-06T02:47:34Z",
   "observations": [
     [
       "2020-01-01",
@@ -1445,6 +1445,10 @@
     [
       "2026-10-28",
       999.727
+    ],
+    [
+      "2026-11-04",
+      957.175
     ]
   ]
 }

@@ -252,8 +252,8 @@ class BuildSnapshotTests(unittest.TestCase):
 
         self.assertEqual(fred_fetch.call_args.args[2], "yoy")
         self.assertEqual(fred_fetch.call_args.kwargs["timeout"], 30)
-        self.assertEqual(fred_fetch.call_args.kwargs["attempts"], 4)
-        self.assertEqual(fred_fetch.call_args.kwargs["retry_backoff"], 1.0)
+        self.assertEqual(fred_fetch.call_args.kwargs["attempts"], 5)
+        self.assertEqual(fred_fetch.call_args.kwargs["retry_backoff"], 2.0)
         self.assertEqual(yahoo_fetch.call_args.kwargs["timeout"], 9)
         self.assertEqual(yahoo_fetch.call_args.kwargs["attempts"], 2)
 

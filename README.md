@@ -88,7 +88,9 @@ snapshot stays on the site.
 - Overnight Reverse Repo: `RRPONTSYD`, billions of dollars
 - Treasury General Account: `WTREGEN`, stored in billions (FRED publishes millions)
 - Net Liquidity: `WALCL − WTREGEN − RRPONTSYD` in billions, charted on a second
-  axis against the S&P 500
+  axis against the S&P 500. Overnight reverse repo is drawn on that card.
+- SOFR minus IORB: secured overnight financing rate minus interest on reserve balances
+- Chicago Fed NFCI: `NFCI`, weekly financial conditions index
 - US Dollar Index: `DTWEXBGS`, or ICE `DX-Y.NYB` from Yahoo when that print is
   more than five days newer
 - Dollar vs Advanced Economies: `DTWEXAFEGS`

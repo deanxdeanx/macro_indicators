@@ -14,9 +14,9 @@
   "group": "macro",
   "file": "series/T10Y2Y.json",
   "status": "ok",
-  "observation_count": 1712,
-  "latest_date": "2026-11-04",
-  "fetched_at": "2026-11-05T03:24:54Z",
+  "observation_count": 1713,
+  "latest_date": "2026-11-05",
+  "fetched_at": "2026-11-06T02:47:34Z",
   "observations": [
     [
       "2020-01-02",
@@ -6865,6 +6865,10 @@
     [
       "2026-11-04",
       0.32
+    ],
+    [
+      "2026-11-05",
+      0.38
     ]
   ]
 }

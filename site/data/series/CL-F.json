@@ -14,9 +14,9 @@
   "group": "markets",
   "file": "series/CL-F.json",
   "status": "ok",
-  "observation_count": 1723,
-  "latest_date": "2026-11-05",
-  "fetched_at": "2026-11-05T20:41:14Z",
+  "observation_count": 1724,
+  "latest_date": "2026-11-06",
+  "fetched_at": "2026-11-06T02:47:34Z",
   "observations": [
     [
       "2020-01-02",
@@ -6909,6 +6909,10 @@
     [
       "2026-11-05",
       90.519997
+    ],
+    [
+      "2026-11-06",
+      91.68
     ]
   ]
 }
