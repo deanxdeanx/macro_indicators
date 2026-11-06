@@ -10,18 +10,18 @@
   "group": "semis",
   "file": "semis/LRCX.json",
   "visible": true,
-  "market_cap": 231346465387.83,
+  "market_cap": 252257594789.73,
   "shares": 1249171000.0,
   "ordinary_per_share": 1,
   "eps_concept": "EarningsPerShareDiluted",
   "eps_unit": "USD/shares",
   "eps_basis": "quarterly TTM diluted EPS, split-adjusted to the current share count",
   "description": "quarterly TTM diluted EPS, split-adjusted to the current share count",
-  "price": 185.2,
-  "pe": 27.6006,
+  "price": 201.94,
+  "pe": 30.0954,
   "median_pe": 20.6583,
-  "pe_percentile": 80.2,
-  "latest_date": "2026-11-05",
+  "pe_percentile": 82.6,
+  "latest_date": "2026-11-06",
   "observations": [
     [
       "2016-11-30",
@@ -504,8 +504,8 @@
       239.11
     ],
     [
-      "2026-11-05",
-      185.2
+      "2026-11-06",
+      201.94
     ]
   ],
   "pe_observations": [
@@ -990,11 +990,11 @@
       35.6349
     ],
     [
-      "2026-11-05",
-      27.6006
+      "2026-11-06",
+      30.0954
     ]
   ],
   "observation_count": 121,
   "status": "ok",
-  "fetched_at": "2026-11-06T02:47:34Z"
+  "fetched_at": "2026-11-06T19:57:52Z"
 }

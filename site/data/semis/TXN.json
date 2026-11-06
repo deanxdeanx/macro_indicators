@@ -10,18 +10,18 @@
   "group": "semis",
   "file": "semis/TXN.json",
   "visible": true,
-  "market_cap": 254165207818.19,
+  "market_cap": 254485033006.0,
   "shares": 913770316.0,
   "ordinary_per_share": 1,
   "eps_concept": "EarningsPerShareDiluted",
   "eps_unit": "USD/shares",
   "eps_basis": "quarterly TTM diluted EPS, split-adjusted to the current share count",
   "description": "quarterly TTM diluted EPS, split-adjusted to the current share count",
-  "price": 278.15,
-  "pe": 36.0298,
+  "price": 278.5,
+  "pe": 36.0751,
   "median_pe": 24.0223,
-  "pe_percentile": 86.0,
-  "latest_date": "2026-11-05",
+  "pe_percentile": 86.8,
+  "latest_date": "2026-11-06",
   "observations": [
     [
       "2016-11-30",
@@ -504,8 +504,8 @@
       300.84
     ],
     [
-      "2026-11-05",
-      278.15
+      "2026-11-06",
+      278.5
     ]
   ],
   "pe_observations": [
@@ -990,11 +990,11 @@
       38.9689
     ],
     [
-      "2026-11-05",
-      36.0298
+      "2026-11-06",
+      36.0751
     ]
   ],
   "observation_count": 121,
   "status": "ok",
-  "fetched_at": "2026-11-06T02:47:34Z"
+  "fetched_at": "2026-11-06T19:57:52Z"
 }
