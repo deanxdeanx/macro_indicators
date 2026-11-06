@@ -10,18 +10,18 @@
   "group": "semis",
   "file": "semis/ASML.json",
   "visible": true,
-  "market_cap": 576700470958.72,
+  "market_cap": 522876884631.86,
   "shares": 385417665.0,
   "ordinary_per_share": 1,
   "eps_concept": "EarningsPerShareDiluted",
   "eps_unit": "EUR/shares",
   "eps_basis": "annual diluted EPS carried forward; this filer does not report a quarterly EPS series",
   "description": "annual diluted EPS carried forward; this filer does not report a quarterly EPS series EPS converted from euros with FRED DEXUSEU.",
-  "price": 1496.3,
-  "pe": 51.5972,
+  "price": 1356.65,
+  "pe": 46.7816,
   "median_pe": 40.6482,
-  "pe_percentile": 81.0,
-  "latest_date": "2026-11-04",
+  "pe_percentile": 69.4,
+  "latest_date": "2026-11-05",
   "observations": [
     [
       "2016-11-30",
@@ -504,8 +504,8 @@
       1565.9
     ],
     [
-      "2026-11-04",
-      1496.3
+      "2026-11-05",
+      1356.65
     ]
   ],
   "pe_observations": [
@@ -990,11 +990,11 @@
       53.9972
     ],
     [
-      "2026-11-04",
-      51.5972
+      "2026-11-05",
+      46.7816
     ]
   ],
   "observation_count": 121,
   "status": "ok",
-  "fetched_at": "2026-11-05T03:24:54Z"
+  "fetched_at": "2026-11-06T02:47:34Z"
 }

@@ -30,9 +30,11 @@ from data_sources import (
     fetch_fred_series,
     as_of_label,
     fetch_yahoo_chart_series,
+    fred_refresh_chip,
     lagged_change,
     observation_window,
     range_percentile,
+    MACRO_SECTION_ORDER,
     regime_readout,
     source_dates,
 )
@@ -41,12 +43,11 @@ from data_sources import (
 logger = logging.getLogger("build_data")
 
 DEFAULT_DATA_DIR = Path("site/data")
-# The 3 Nov 2026 GitHub run opened six FRED CSV connections together. Every one
-# raised ReadTimeout at 30 seconds, including the last pair, while Yahoo on the
-# same runner succeeded. fred.stlouisfed.org is behind Akamai and was accepting
-# the connection without sending a body. Keep FRED to two at a time.
-FRED_WORKERS = 2
-FRED_START_GAP_SECONDS = 0.4
+# GitHub runners time out on parallel reads to fred.stlouisfed.org. FRED is
+# fetched one series at a time. After a timeout, the next series waits longer
+# and retries fewer times so a dead host does not fill the whole job.
+FRED_WORKERS = 1
+FRED_RETRY_BACKOFF = 2.0
 
 
 def series_file_id(key: str) -> str:
@@ -262,23 +263,38 @@ def _public_error(exc: BaseException) -> str:
     return message[:300]
 
 
-def default_fetcher(timeout: float):
+def fred_attempt_plan(consecutive_timeouts: int) -> tuple[int, float]:
+    """Return FRED attempts and the pause before the next series starts.
+
+    The first series retries five times. After one timeout, later series use
+    three attempts and a longer gap. After two, they use two attempts.
+    """
+    if consecutive_timeouts <= 0:
+        return 5, 0.8
+    if consecutive_timeouts == 1:
+        return 3, 2.0
+    return 2, 2.5
+
+
+def default_fetcher(timeout: float, pace: dict | None = None):
     """Fetch one indicator. FRED gets a longer timeout and more retries than Yahoo."""
 
     fred_timeout = max(float(timeout), 30.0)
+    fred_pace = pace if pace is not None else {"consecutive_timeouts": 0}
 
     def fetch(indicator: Indicator, start: date, end: date) -> pd.Series:
         if indicator.source == "Computed":
             raise DataSourceError(f"{indicator.key} is computed after the source series are stored.")
         if indicator.source == "FRED":
+            attempts, _gap = fred_attempt_plan(int(fred_pace.get("consecutive_timeouts") or 0))
             return fetch_fred_series(
                 indicator.key,
                 start,
                 indicator.transform,
                 end,
                 timeout=fred_timeout,
-                attempts=4,
-                retry_backoff=1.0,
+                attempts=attempts,
+                retry_backoff=FRED_RETRY_BACKOFF,
             )
         if indicator.source == "Yahoo Finance":
             return fetch_yahoo_chart_series(
@@ -377,7 +393,8 @@ def build_snapshot(
         view_start = fetch_start
 
     moment = utc_now_iso(now)
-    fetch = fetcher or default_fetcher(timeout)
+    fred_pace = {"consecutive_timeouts": 0}
+    fetch = fetcher or default_fetcher(timeout, fred_pace)
     outcomes: dict[str, tuple[str, object]] = {}
     pace_fred = fetcher is None
     fred_start = threading.Lock()
@@ -386,23 +403,29 @@ def build_snapshot(
         if indicator.source == "Computed":
             return indicator.key, ("defer", None)
         if pace_fred and indicator.source == "FRED":
+            _attempts, gap = fred_attempt_plan(int(fred_pace.get("consecutive_timeouts") or 0))
             with fred_start:
-                time.sleep(FRED_START_GAP_SECONDS)
+                time.sleep(gap)
         try:
             series = fetch(indicator, fetch_start, fetch_end)
             if series is None or series.dropna().empty:
                 raise DataSourceError(f"No data returned for {indicator.key}.")
+            if pace_fred and indicator.source == "FRED":
+                fred_pace["consecutive_timeouts"] = 0
             return indicator.key, ("ok", series)
         except Exception as exc:
+            message = _public_error(exc)
+            if pace_fred and indicator.source == "FRED" and "timed out" in message.lower():
+                fred_pace["consecutive_timeouts"] = int(fred_pace.get("consecutive_timeouts") or 0) + 1
             logger.error(
                 "series_fetch_failed key=%s error=%s message=%s",
                 indicator.key,
                 type(exc).__name__,
-                _public_error(exc),
+                message,
             )
             return indicator.key, ("error", exc)
 
-    overall_timeout = max(600.0, float(timeout) * 20)
+    overall_timeout = max(2400.0, float(timeout) * 40)
     fred_items = [indicator for _, indicator in grouped if indicator.source == "FRED"]
     other_items = [indicator for _, indicator in grouped if indicator.source != "FRED"]
     fred_workers = max(1, min(FRED_WORKERS, workers))
@@ -493,6 +516,8 @@ def build_snapshot(
         "data_through": dates["data_through"],
         "as_of_label": as_of_label(dates),
         "regime_readout": regime_readout(entries),
+        "fred_chip": fred_refresh_chip(entries),
+        "section_order": list(MACRO_SECTION_ORDER),
         "counts": counts,
         "series": entries,
     }
@@ -546,6 +571,8 @@ def _add_derived_series(
         _refresh_dollar(data_path, indicators["DTWEXBGS"], entries, by_key, counts, moment, timeout)
     if "DGS2DFF" in indicators:
         _write_funds_spread(data_path, indicators["DGS2DFF"], entries, by_key, counts, moment)
+    if "SOFRIORB" in indicators:
+        _write_funding_spread(data_path, indicators["SOFRIORB"], entries, by_key, counts, moment)
 
 
 def _write_net_liquidity(
@@ -632,6 +659,51 @@ def _write_funds_spread(
         observations = observations_from_series(spread)
         if not observations:
             raise DataSourceError("2-year minus fed funds had no overlapping dates.")
+        document = series_document(meta, observations, status="ok", fetched_at=moment)
+        write_json(path, document)
+        entry = catalog_entry(document, status="ok", last_attempt_at=moment, last_error=None)
+        counts["ok"] += 1
+    except Exception as exc:
+        message = _public_error(exc)
+        if previous_is_usable(previous):
+            entry = catalog_entry(
+                _catalog_source_from_previous(meta, previous),
+                status="preserved",
+                last_attempt_at=moment,
+                last_error=message,
+            )
+            counts["preserved"] += 1
+        else:
+            document = series_document(meta, [], status="error", fetched_at=None)
+            write_json(path, document)
+            entry = catalog_entry(document, status="error", last_attempt_at=moment, last_error=message)
+            counts["error"] += 1
+    entries.append(entry)
+    by_key[indicator.key] = entry
+
+
+def _write_funding_spread(
+    data_path: Path,
+    grouped_indicator: tuple[str, Indicator],
+    entries: list[dict],
+    by_key: dict[str, dict],
+    counts: dict[str, int],
+    moment: str,
+) -> None:
+    group, indicator = grouped_indicator
+    meta = metadata_for(indicator, group)
+    path = data_path / meta["file"]
+    previous = load_json(path)
+    try:
+        sofr = _scaled_component(data_path, "SOFR", "none")
+        iorb = _scaled_component(data_path, "IORB", "none")
+        if sofr is None or iorb is None:
+            raise DataSourceError("SOFR minus IORB needs both SOFR and IORB.")
+        spread = funds_spread(sofr, iorb)
+        spread.name = "SOFRIORB"
+        observations = observations_from_series(spread)
+        if not observations:
+            raise DataSourceError("SOFR minus IORB had no overlapping dates.")
         document = series_document(meta, observations, status="ok", fetched_at=moment)
         write_json(path, document)
         entry = catalog_entry(document, status="ok", last_attempt_at=moment, last_error=None)

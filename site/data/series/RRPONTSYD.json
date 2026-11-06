@@ -14,9 +14,9 @@
   "group": "macro",
   "file": "series/RRPONTSYD.json",
   "status": "ok",
-  "observation_count": 1709,
-  "latest_date": "2026-11-04",
-  "fetched_at": "2026-11-05T03:24:54Z",
+  "observation_count": 1710,
+  "latest_date": "2026-11-05",
+  "fetched_at": "2026-11-06T02:47:34Z",
   "observations": [
     [
       "2020-01-02",
@@ -6853,6 +6853,10 @@
     [
       "2026-11-04",
       0.225
+    ],
+    [
+      "2026-11-05",
+      0.125
     ]
   ]
 }

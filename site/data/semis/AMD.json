@@ -10,17 +10,17 @@
   "group": "semis",
   "file": "semis/AMD.json",
   "visible": true,
-  "market_cap": 678881303794.07,
+  "market_cap": 663251274294.1,
   "shares": 1640087251.0,
   "ordinary_per_share": 1,
   "eps_concept": "EarningsPerShareDiluted",
   "eps_unit": "USD/shares",
   "eps_basis": "quarterly TTM diluted EPS, split-adjusted to the current share count",
   "description": "quarterly TTM diluted EPS, split-adjusted to the current share count",
-  "price": 413.93,
-  "pe": 89.9848,
+  "price": 404.4,
+  "pe": 87.913,
   "median_pe": 107.1576,
-  "pe_percentile": 42.6,
+  "pe_percentile": 40.6,
   "latest_date": "2026-11-05",
   "observations": [
     [
@@ -505,7 +505,7 @@
     ],
     [
       "2026-11-05",
-      413.93
+      404.4
     ]
   ],
   "pe_observations": [
@@ -911,10 +911,10 @@
     ],
     [
       "2026-11-05",
-      89.9848
+      87.913
     ]
   ],
   "observation_count": 121,
   "status": "ok",
-  "fetched_at": "2026-11-05T20:41:14Z"
+  "fetched_at": "2026-11-06T02:47:34Z"
 }

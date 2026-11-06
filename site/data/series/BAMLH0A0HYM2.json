@@ -14,9 +14,9 @@
   "group": "macro",
   "file": "series/BAMLH0A0HYM2.json",
   "status": "ok",
-  "observation_count": 785,
-  "latest_date": "2026-11-03",
-  "fetched_at": "2026-11-05T03:24:54Z",
+  "observation_count": 786,
+  "latest_date": "2026-11-04",
+  "fetched_at": "2026-11-06T02:47:34Z",
   "observations": [
     [
       "2023-11-06",
@@ -3157,6 +3157,10 @@
     [
       "2026-11-03",
       3.4
+    ],
+    [
+      "2026-11-04",
+      3.32
     ]
   ]
 }

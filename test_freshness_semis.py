@@ -7,8 +7,15 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from build_data import fred_failure_summary, funds_spread, main
-from data_sources import as_of_label, regime_readout, source_dates
+from build_data import fred_attempt_plan, fred_failure_summary, funds_spread, main
+from data_sources import (
+    MACRO_INDICATORS,
+    MACRO_SECTION_ORDER,
+    as_of_label,
+    fred_refresh_chip,
+    regime_readout,
+    source_dates,
+)
 from semis import (
     earnings_series,
     market_cap,
@@ -82,6 +89,40 @@ class FreshnessTests(unittest.TestCase):
             self.assertEqual(main([]), 2)
 
 
+class FredChipTests(unittest.TestCase):
+    def test_chip_is_stronger_when_most_fred_series_fail(self) -> None:
+        ok = {"source": "FRED", "status": "ok"}
+        held = {"source": "FRED", "status": "preserved"}
+
+        self.assertIsNone(fred_refresh_chip([ok, ok]))
+        self.assertEqual(fred_refresh_chip([held, ok, ok, ok]), "Some FRED series held over")
+        self.assertEqual(
+            fred_refresh_chip([held, held, held, ok]),
+            "FRED refresh failed — tiles may be stale",
+        )
+
+    def test_timeouts_slow_later_fred_retries(self) -> None:
+        self.assertEqual(fred_attempt_plan(0), (5, 0.8))
+        self.assertEqual(fred_attempt_plan(1), (3, 2.0))
+        self.assertEqual(fred_attempt_plan(2), (2, 2.5))
+
+    def test_macro_sections_lead_with_the_tape(self) -> None:
+        self.assertEqual(
+            MACRO_SECTION_ORDER[:3],
+            ("Liquidity", "Real rates and credit", "Rates and the curve"),
+        )
+        self.assertLess(MACRO_SECTION_ORDER.index("Rates and the curve"), MACRO_SECTION_ORDER.index("Growth and labor"))
+        by_key = {item.key: item for item in MACRO_INDICATORS}
+        self.assertEqual(by_key["NFCI"].section, "Liquidity")
+        self.assertTrue(by_key["NFCI"].higher_is_bad)
+        self.assertEqual(by_key["NFCI"].key, "NFCI")
+        self.assertFalse(by_key["SOFR"].visible)
+        self.assertFalse(by_key["IORB"].visible)
+        self.assertEqual(by_key["SOFRIORB"].source, "Computed")
+        self.assertEqual(by_key["SOFRIORB"].section, "Liquidity")
+        self.assertTrue(by_key["SOFRIORB"].higher_is_bad)
+
+
 class RegimeAndSpreadTests(unittest.TestCase):
     def test_readout_names_a_tightening_mix(self) -> None:
         entries = [
@@ -105,6 +146,14 @@ class RegimeAndSpreadTests(unittest.TestCase):
         spread = funds_spread(two_year, funds)
 
         self.assertAlmostEqual(float(spread.iloc[-1]), 0.73)
+
+    def test_sofr_minus_iorb_uses_the_same_alignment(self) -> None:
+        sofr = pd.Series([3.94, 3.95], index=pd.to_datetime(["2026-11-03", "2026-11-04"]))
+        iorb = pd.Series([3.90, 3.90], index=pd.to_datetime(["2026-11-03", "2026-11-04"]))
+
+        spread = funds_spread(sofr, iorb)
+
+        self.assertAlmostEqual(float(spread.iloc[-1]), 0.05)
 
 
 class SemiconductorTests(unittest.TestCase):
