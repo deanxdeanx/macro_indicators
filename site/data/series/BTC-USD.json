@@ -14,9 +14,9 @@
   "group": "markets",
   "file": "series/BTC-USD.json",
   "status": "ok",
-  "observation_count": 2503,
-  "latest_date": "2026-11-07",
-  "fetched_at": "2026-11-07T18:03:35Z",
+  "observation_count": 2504,
+  "latest_date": "2026-11-08",
+  "fetched_at": "2026-11-08T18:22:38Z",
   "observations": [
     [
       "2020-01-01",
@@ -10028,7 +10028,11 @@
     ],
     [
       "2026-11-07",
-      75730.203125
+      75747.578125
+    ],
+    [
+      "2026-11-08",
+      75796.757812
     ]
   ]
 }
