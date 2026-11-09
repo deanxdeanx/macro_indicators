@@ -14,9 +14,9 @@
   "group": "companies",
   "file": "series/NFLX.json",
   "status": "ok",
-  "observation_count": 1722,
-  "latest_date": "2026-11-06",
-  "fetched_at": "2026-11-08T18:22:38Z",
+  "observation_count": 1723,
+  "latest_date": "2026-11-09",
+  "fetched_at": "2026-11-09T23:00:07Z",
   "observations": [
     [
       "2020-01-02",
@@ -6905,6 +6905,10 @@
     [
       "2026-11-06",
       63.41
+    ],
+    [
+      "2026-11-09",
+      63.950001
     ]
   ]
 }
