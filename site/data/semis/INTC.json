@@ -10,18 +10,18 @@
   "group": "semis",
   "file": "semis/INTC.json",
   "visible": true,
-  "market_cap": 315551544322.97,
+  "market_cap": 308960955677.03,
   "shares": 5315000000.0,
   "ordinary_per_share": 1,
   "eps_concept": "EarningsPerShareDiluted",
   "eps_unit": "USD/shares",
   "eps_basis": "quarterly TTM diluted EPS, split-adjusted to the current share count",
   "description": "quarterly TTM diluted EPS, split-adjusted to the current share count Current P/E is blank because trailing EPS is negative or missing.",
-  "price": 59.37,
+  "price": 58.13,
   "pe": null,
   "median_pe": null,
   "pe_percentile": null,
-  "latest_date": "2026-11-09",
+  "latest_date": "2026-11-10",
   "observations": [
     [
       "2016-11-30",
@@ -504,8 +504,8 @@
       65.76
     ],
     [
-      "2026-11-09",
-      59.37
+      "2026-11-10",
+      58.13
     ]
   ],
   "pe_observations": [
@@ -864,5 +864,5 @@
   ],
   "observation_count": 121,
   "status": "ok",
-  "fetched_at": "2026-11-10T07:15:34Z"
+  "fetched_at": "2026-11-10T20:28:44Z"
 }

@@ -14,9 +14,9 @@
   "group": "markets",
   "file": "series/GSPC.json",
   "status": "ok",
-  "observation_count": 1723,
-  "latest_date": "2026-11-09",
-  "fetched_at": "2026-11-10T07:15:34Z",
+  "observation_count": 1724,
+  "latest_date": "2026-11-10",
+  "fetched_at": "2026-11-10T20:28:44Z",
   "observations": [
     [
       "2020-01-02",
@@ -6909,6 +6909,10 @@
     [
       "2026-11-09",
       7549.939941
+    ],
+    [
+      "2026-11-10",
+      7518.080078
     ]
   ]
 }
