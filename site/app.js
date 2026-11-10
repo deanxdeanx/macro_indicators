@@ -1,7 +1,9 @@
-const POSITIVE = "#5f9e68";
-const NEGATIVE = "#b95751";
-const NEUTRAL = "#7892a8";
-const SERIES_COLORS = ["#7c91c9", "#a779c9", "#c47da5", "#d08c69", "#d8aa69", "#92a96e", "#5f9e68", "#63a0a0"];
+const POSITIVE = "#3ec1ad";
+const NEGATIVE = "#e36b66";
+const NEUTRAL = "#8aa8a4";
+const LINE_PRIMARY = "#3ec1ad";
+const LINE_SECONDARY = "#e8c07a";
+const SERIES_COLORS = ["#3ec1ad", "#8fd4c8", "#e8c07a", "#9bb7ff", "#e07a9a", "#c4b5fd", "#f4f7f6", "#6ea8a4"];
 const FRESHNESS_DAYS = { Daily: 7, Weekly: 16, Monthly: 75, Quarterly: 200 };
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const PLOT_CONFIG = { displaylogo: false, displayModeBar: false, responsive: true };
@@ -357,8 +359,26 @@ function chartElementId(entry) {
   return `chart-${stem.replace(/[^A-Za-z0-9_-]/g, "")}`;
 }
 
-const AXIS_FONT = { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#d5dddd", size: 13 };
-const GRID = "#2a3434";
+const FONT_STACK = '"Instrument Sans", ui-sans-serif, system-ui, sans-serif';
+const AXIS_FONT = { family: FONT_STACK, color: "rgba(255,255,255,0.42)", size: 11 };
+const LABEL_FONT = { family: FONT_STACK, color: "rgba(255,255,255,0.72)", size: 12 };
+
+function fillFor(color) {
+  if (color === POSITIVE) return "rgba(62, 193, 173, 0.12)";
+  if (color === NEGATIVE) return "rgba(227, 107, 102, 0.12)";
+  return "rgba(138, 168, 164, 0.10)";
+}
+
+function chartLegend(y) {
+  return {
+    orientation: "h",
+    yanchor: "bottom",
+    y,
+    x: 0,
+    bgcolor: "rgba(0,0,0,0)",
+    font: LABEL_FONT,
+  };
+}
 
 function chartNarrow() {
   return window.innerWidth <= 800;
@@ -508,15 +528,15 @@ function dateTicks(dates, narrow) {
 function baseLayout(height, topMargin) {
   return {
     height,
-    margin: { l: 16, r: 20, t: topMargin, b: 52 },
+    margin: { l: 8, r: 8, t: topMargin, b: 36 },
     hovermode: "x unified",
     paper_bgcolor: "rgba(0,0,0,0)",
     plot_bgcolor: "rgba(0,0,0,0)",
     font: AXIS_FONT,
     hoverlabel: {
-      bgcolor: "#161b1b",
-      bordercolor: "#3a4646",
-      font: { family: AXIS_FONT.family, color: "#f2f6f6", size: 13 },
+      bgcolor: "#0c1e1e",
+      bordercolor: "rgba(255,255,255,0.12)",
+      font: { family: FONT_STACK, color: "#ffffff", size: 12 },
     },
   };
 }
@@ -529,9 +549,11 @@ function xAxis(dates) {
     tickvals: ticks.map((tick) => tick.iso),
     ticktext: ticks.map((tick) => tick.label),
     tickfont: AXIS_FONT,
-    gridcolor: GRID,
+    showgrid: false,
+    gridcolor: "rgba(0,0,0,0)",
     zeroline: false,
     showline: false,
+    showspikes: false,
     automargin: true,
     ticklabelstandoff: 8,
     ticklabeloverflow: "allow",
@@ -564,11 +586,13 @@ function yAxis(values, unit) {
     tickvals: ticks,
     ticktext: ticks.map((value) => formatYTick(value, unit, step)),
     tickfont: AXIS_FONT,
-    gridcolor: GRID,
+    showgrid: false,
+    gridcolor: "rgba(0,0,0,0)",
     zeroline: false,
     showline: false,
+    showspikes: false,
     automargin: true,
-    ticklabelstandoff: 12,
+    ticklabelstandoff: 10,
     ticklabeloverflow: "allow",
   };
 }
@@ -584,7 +608,7 @@ function zeroLine(low, high, unit) {
     y0: 0,
     y1: 0,
     layer: "below",
-    line: { color: "#8fa3a3", width: 1.25 },
+    line: { color: "rgba(255,255,255,0.16)", width: 1 },
   }];
 }
 
@@ -605,7 +629,7 @@ function drawInset(elementId, rows, unit, name, focusDays = 365) {
       yanchor: "bottom",
       text: name,
       showarrow: false,
-      font: { family: AXIS_FONT.family, size: 13, color: "#e7eeee" },
+      font: LABEL_FONT,
     }],
     xaxis: xAxis(rows.map((row) => row[0])),
     yaxis: { ...y, side: "right" },
@@ -615,7 +639,7 @@ function drawInset(elementId, rows, unit, name, focusDays = 365) {
     y: rows.map((row) => row[1]),
     type: "scatter",
     mode: "lines",
-    line: { color: "#d08c69", width: 1.5 },
+    line: { color: LINE_SECONDARY, width: 1.25 },
     customdata: rows.map((row) => formatHoverValue(row[1], unit)),
     hovertemplate: `%{customdata}<extra>${escapeHtml(name)}</extra>`,
   }], layout, PLOT_CONFIG);
@@ -632,16 +656,12 @@ function drawLine(entry, visible, change) {
     customdata: visible.map((row) => formatHoverValue(row[1], entry.unit)),
     type: "scatter",
     mode: "lines",
-    line: { color, width: 1.6 },
+    line: { color, width: 1.25 },
     hovertemplate: `%{customdata}<extra>${escapeHtml(entry.name)}</extra>`,
   };
   if (useFill) {
     trace.fill = "tozeroy";
-    trace.fillcolor = color === POSITIVE
-      ? "rgba(95, 158, 104, 0.05)"
-      : color === NEGATIVE
-        ? "rgba(185, 87, 81, 0.05)"
-        : "rgba(120, 146, 168, 0.04)";
+    trace.fillcolor = fillFor(color);
   }
   const yValues = axisRows(entry, visible).map((row) => row[1]);
   const y = yAxis(yValues, entry.unit);
@@ -661,13 +681,7 @@ function drawDual(entry, visible, overlay, overlayName, overlayUnit) {
   const layout = {
     ...baseLayout(chartNarrow() ? 320 : 360, 48),
     showlegend: true,
-    legend: {
-      orientation: "h",
-      yanchor: "bottom",
-      y: 1.02,
-      x: 0,
-      font: { family: AXIS_FONT.family, size: 13, color: "#e7eeee" },
-    },
+    legend: chartLegend(1.02),
     xaxis: xAxis(visible.map((row) => row[0])),
     yaxis: { ...yAxis(visible.map((row) => row[1]), entry.unit), side: "left" },
     yaxis2: {
@@ -683,7 +697,7 @@ function drawDual(entry, visible, overlay, overlayName, overlayUnit) {
       type: "scatter",
       mode: "lines",
       name: entry.name,
-      line: { color: "#7c91c9", width: 1.7 },
+      line: { color: LINE_PRIMARY, width: 1.35 },
       hovertemplate: `%{customdata}<extra>${escapeHtml(entry.name)}</extra>`,
       customdata: visible.map((row) => formatHoverValue(row[1], entry.unit)),
     },
@@ -694,7 +708,7 @@ function drawDual(entry, visible, overlay, overlayName, overlayUnit) {
       mode: "lines",
       name: overlayName,
       yaxis: "y2",
-      line: { color: "#d08c69", width: 1.4 },
+      line: { color: LINE_SECONDARY, width: 1.25 },
       hovertemplate: `%{customdata}<extra>${escapeHtml(overlayName)}</extra>`,
       customdata: overlay.map((row) => formatHoverValue(row[1], overlayUnit)),
     },
@@ -713,22 +727,13 @@ function drawComparison(seriesList) {
     type: "scatter",
     mode: "lines",
     name: item.name,
-    line: { width: 1.7, color: SERIES_COLORS[index % SERIES_COLORS.length] },
+    line: { width: 1.35, color: SERIES_COLORS[index % SERIES_COLORS.length] },
     hovertemplate: "%{customdata}<extra>%{fullData.name}</extra>",
   }));
   const layout = {
     ...baseLayout(chartHeight("comparison"), chartNarrow() ? 78 : 56),
     showlegend: true,
-    legend: {
-      orientation: "h",
-      yanchor: "bottom",
-      y: 1.12,
-      xanchor: "left",
-      x: 0,
-      font: { family: AXIS_FONT.family, size: 13, color: "#e7eeee" },
-      bgcolor: "rgba(0,0,0,0)",
-      itemwidth: 40,
-    },
+    legend: { ...chartLegend(1.12), xanchor: "left" },
     xaxis: xAxis(dates),
     yaxis: yAxis(values, "index"),
     annotations: [{
@@ -740,7 +745,7 @@ function drawComparison(seriesList) {
       yanchor: "bottom",
       text: "Index (start = 100)",
       showarrow: false,
-      font: { family: AXIS_FONT.family, size: 14, color: "#f2f6f6" },
+      font: LABEL_FONT,
     }],
   };
   Plotly.react(node, traces, layout, PLOT_CONFIG);
@@ -1106,13 +1111,7 @@ function drawSemi(entry) {
   const layout = {
     ...baseLayout(chartNarrow() ? 320 : 360, 48),
     showlegend: true,
-    legend: {
-      orientation: "h",
-      yanchor: "bottom",
-      y: 1.02,
-      x: 0,
-      font: { family: AXIS_FONT.family, size: 13, color: "#e7eeee" },
-    },
+    legend: chartLegend(1.02),
     xaxis: xAxis(prices.map((row) => row[0])),
     yaxis: { ...yAxis(prices.map((row) => row[1]), "$"), side: "left" },
     yaxis2: {
@@ -1127,7 +1126,7 @@ function drawSemi(entry) {
     type: "scatter",
     mode: "lines",
     name: "Price",
-    line: { color: "#7c91c9", width: 1.7 },
+    line: { color: LINE_PRIMARY, width: 1.35 },
     customdata: prices.map((row) => formatHoverValue(row[1], "$")),
     hovertemplate: "%{customdata}<extra>Price</extra>",
   }];
@@ -1140,7 +1139,7 @@ function drawSemi(entry) {
       name: "P/E",
       connectgaps: false,
       yaxis: "y2",
-      line: { color: "#d08c69", width: 1.5 },
+      line: { color: LINE_SECONDARY, width: 1.25 },
       customdata: pe.map((row) => formatPe(row[1])),
       hovertemplate: "%{customdata}<extra>P/E</extra>",
     });
