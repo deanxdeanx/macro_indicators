@@ -282,6 +282,29 @@ input[type="date"]:focus-visible,
   margin: 0 0 0.35rem;
 }
 
+.regime-readout.stale { color: #8ea0a0; }
+
+.held-details {
+  margin: 0.35rem 0;
+  padding: 0.45rem 0.7rem;
+  border-radius: 5px;
+  background: #161b1b;
+  border: 1px solid #a6843d;
+  color: #f0d7a2;
+  font-size: 0.78rem;
+}
+.held-details summary { cursor: pointer; }
+.held-details p { margin: 0.4rem 0 0; color: #f0d7a2; }
+
+.regime-src {
+  margin: 0.1rem 0 0;
+  color: #f0d7a2;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .regime-readout {
   margin: 0;
   color: #f2f6f6;
