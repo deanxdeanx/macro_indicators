@@ -8,15 +8,15 @@
   "description": "",
   "transform": "none",
   "max_age_days": null,
-  "section": "Growth and labor",
+  "section": "Cross-asset",
   "higher_is_bad": false,
   "visible": true,
   "group": "markets",
   "file": "series/GC-F.json",
   "status": "ok",
-  "observation_count": 1726,
-  "latest_date": "2026-11-09",
-  "fetched_at": "2026-11-09T23:00:07Z",
+  "observation_count": 1727,
+  "latest_date": "2026-11-10",
+  "fetched_at": "2026-11-10T07:15:34Z",
   "observations": [
     [
       "2020-01-02",
@@ -6920,7 +6920,11 @@
     ],
     [
       "2026-11-09",
-      4149.5
+      4114.5
+    ],
+    [
+      "2026-11-10",
+      4131.5
     ]
   ]
 }

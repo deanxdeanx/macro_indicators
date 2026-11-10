@@ -105,6 +105,8 @@ function formatValue(value, unit, compact = false) {
   if (unit === "$ billions") return `$${fixed(value, 1)}B`;
   if (unit === "%") return `${fixed(value, 2)}%`;
   if (unit === "claims") return formatClaimsLevel(value);
+  if (unit === "ratio") return value.toLocaleString("en-US", { maximumSignificantDigits: 4 });
+  if (unit === "contracts") return Math.round(value).toLocaleString("en-US");
   if (unit === "points" || unit === "index") return fixed(value, 2);
   return compact ? compactNumber(value) : fixed(value, 2);
 }
@@ -185,11 +187,50 @@ function latestMetrics(rows, changeMode) {
   return { latest, previousChange, ytdChange, latestDate };
 }
 
+function addDays(iso, days) {
+  return new Date(Date.parse(`${iso}T00:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
+}
+
+function addMonths(iso, months) {
+  const [year, month, day] = iso.split("-").map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1 + months, 1));
+  const last = new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, 0)).getUTCDate();
+  const result = new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), Math.min(day, last)));
+  return result.toISOString().slice(0, 10);
+}
+
+function addBusinessDays(iso, count) {
+  let current = iso;
+  let added = 0;
+  while (added < count) {
+    current = addDays(current, 1);
+    const weekday = new Date(`${current}T00:00:00Z`).getUTCDay();
+    if (weekday !== 0 && weekday !== 6) added += 1;
+  }
+  return current;
+}
+
+function releaseDeadline(latest, frequency) {
+  if (frequency === "Daily") return addBusinessDays(latest, 2);
+  if (frequency === "Weekly") return addDays(latest, 11);
+  if (frequency === "Monthly") return addDays(addMonths(latest, 2), 22);
+  if (frequency === "Quarterly") return addDays(addMonths(latest, 7), 14);
+  return addDays(latest, 30);
+}
+
+function releaseIsStale(latest, frequency, asOf, maxAgeDays) {
+  if (!latest) return true;
+  if (asOf <= releaseDeadline(latest, frequency)) return false;
+  const age = civilDays(latest, asOf);
+  if (Number.isFinite(maxAgeDays) && age <= maxAgeDays) return false;
+  return true;
+}
+
 function freshness(latestDate, frequency, maxAgeDays, asOf) {
   const threshold = Number.isFinite(maxAgeDays) ? maxAgeDays : (FRESHNESS_DAYS[frequency] || 30);
   if (!latestDate) return { ageDays: 0, isStale: true, threshold };
   const ageDays = civilDays(latestDate, asOf);
-  return { ageDays, isStale: ageDays > threshold, threshold };
+  return { ageDays, isStale: releaseIsStale(latestDate, frequency, asOf, maxAgeDays), threshold };
 }
 
 function byKey() {
@@ -303,7 +344,7 @@ function renderBanners() {
   }
   if (preserved.length) {
     const names = preserved.map((entry) => entry.key).join(", ");
-    pieces.push(`<p class="alert warn held">Held over from the previous run (${preserved.length}): ${escapeHtml(names)}. These cards still show their last good observation.</p>`);
+    pieces.push(`<details class="held-details"><summary>${preserved.length} held over (view)</summary><p>${escapeHtml(names)}</p></details>`);
   }
   if (missing.length) {
     pieces.push(`<p class="alert bad">${missing.length} series have no saved observations.</p>`);
@@ -367,6 +408,11 @@ function formatYTick(value, unit, step) {
   if (unit === "claims") {
     return Math.abs(value) >= 1_000_000 ? abbreviate(value, 1) : groupedNumber(value, 0);
   }
+  if (unit === "ratio") {
+    const abs = Math.abs(value);
+    const digits = abs >= 1 ? 2 : abs >= 0.01 ? 4 : 5;
+    return value.toFixed(digits);
+  }
   if (unit === "index") {
     if (Math.abs(value) >= 10_000) return abbreviate(value, 1);
     return groupedNumber(value, step >= 1 ? 0 : 1);
@@ -382,6 +428,7 @@ function formatHoverValue(value, unit) {
   if (unit === "$ billions") return `$${groupedNumber(value, 1)}B`;
   if (unit === "claims") return formatClaimsLevel(value);
   if (unit === "x") return formatPe(value);
+  if (unit === "ratio") return value.toLocaleString("en-US", { maximumSignificantDigits: 4 });
   if (unit === "index") return `${groupedNumber(value, 1)} (start = 100)`;
   return groupedNumber(value, 2);
 }
@@ -701,6 +748,7 @@ function drawComparison(seriesList) {
 
 const REGIME = [
   ["DFII10", "10Y real"],
+  ["COPPERGOLD", "Copper/gold"],
   ["T10Y2Y", "2s10s"],
   ["BAMLH0A0HYM2", "HY spread"],
   ["DTWEXBGS", "Broad dollar"],
@@ -713,6 +761,7 @@ const SECTION_ORDER = [
   "Real rates and credit",
   "Rates and the curve",
   "Dollar",
+  "Cross-asset",
   "Growth and labor",
 ];
 
@@ -760,12 +809,33 @@ function ordinal(value) {
   return `${rounded}${suffix}`;
 }
 
+function regimeInputsStale() {
+  const today = todayISO();
+  const present = REGIME.map(([key]) => byKey().get(key)).filter(Boolean);
+  if (!present.length) return false;
+  let stale = 0;
+  for (const entry of present) {
+    const held = entry.status === "preserved" || entry.status === "error";
+    if (held || releaseIsStale(entry.latest_date, entry.frequency, today, entry.max_age_days)) stale += 1;
+  }
+  return stale * 2 > present.length;
+}
+
+function regimeVerdict(text) {
+  if (!text) return "";
+  if (!regimeInputsStale()) return text;
+  if (text.includes("→")) return text.replace(/→\s*.*$/, "→ stale — no call");
+  return "stale — no call";
+}
+
 function regimeMarkup() {
   const chip = state.catalog.fred_chip
     ? `<p class="fred-chip${String(state.catalog.fred_chip).startsWith("FRED refresh failed") ? " severe" : ""}">${escapeHtml(state.catalog.fred_chip)}</p>`
     : "";
-  const readout = state.catalog.regime_readout
-    ? `<p class="regime-readout">${escapeHtml(state.catalog.regime_readout)}</p>`
+  const verdict = regimeVerdict(state.catalog.regime_readout || "");
+  const staleClass = verdict.includes("stale — no call") ? " stale" : "";
+  const readout = verdict
+    ? `<p class="regime-readout${staleClass}">${escapeHtml(verdict)}</p>`
     : "";
   const legend = `<p class="regime-legend">Red means the latest week was bad for risk assets: a rise when higher is bad, or a fall when higher is good. Green means the move was supportive.</p>`;
   const tiles = REGIME.map(([key, label]) => {
@@ -786,9 +856,13 @@ function regimeMarkup() {
     const width = Number.isFinite(percentile) ? Math.min(100, Math.max(0, percentile)) : 0;
     const pct = Number.isFinite(percentile) ? `${ordinal(percentile)} pct of 5Y` : "5Y range n/a";
     const latest = metrics ? formatValue(metrics.latest, entry.unit, true) : "N/A";
+    const backup = entry.source && !["FRED", "Computed", "Yahoo Finance"].includes(entry.source)
+      ? `<p class="regime-src">${escapeHtml(entry.source)}</p>`
+      : "";
     return `
       <article class="regime-tile ${tone}">
         <p class="regime-kicker">${escapeHtml(label)}</p>
+        ${backup}
         <p class="regime-value">${escapeHtml(latest)}</p>
         <p class="regime-moves">
           <span class="delta ${deltaClass(week, entry.higher_is_bad)}">1W ${escapeHtml(formatChange(week, entry.change_mode))}</span>
@@ -801,7 +875,36 @@ function regimeMarkup() {
   return `<section class="regime-block"><div class="regime-head">${readout}${chip}</div>${legend}<div class="regime" aria-label="Risk regime">${tiles}</div></section>`;
 }
 
+function positionsCard(entry) {
+  const doc = state.series.get(entry.key);
+  const markets = doc && Array.isArray(doc.markets) ? doc.markets : null;
+  if (!markets) {
+    const reason = entry.last_error || "No positioning data returned.";
+    return `<article class="card"><h3>${escapeHtml(entry.name)}</h3><p class="alert bad">${escapeHtml(reason)}</p></article>`;
+  }
+  const rows = markets.map((market) => `
+    <tr>
+      <td>${escapeHtml(market.name)}</td>
+      <td>${escapeHtml(formatValue(market.latest, "contracts"))}</td>
+      <td>${Number.isFinite(market.percentile) ? `${ordinal(market.percentile)} of 3Y` : "n/a"}</td>
+      <td>${escapeHtml(formatLong(market.as_of))}</td>
+    </tr>`).join("");
+  return `
+    <article class="card">
+      <h3>${escapeHtml(entry.name)}</h3>
+      <p class="meta">CFTC · weekly · leveraged money, long minus short</p>
+      <p class="desc">${escapeHtml(entry.description || "")}</p>
+      <div class="table-scroll">
+        <table class="semi-table">
+          <thead><tr><th>Market</th><th>Net</th><th>Percentile</th><th>As of</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </article>`;
+}
+
 function cardMarkup(entry) {
+  if (entry.key === "CFTC") return positionsCard(entry);
   const doc = state.series.get(entry.key);
   if (doc && doc.loadError) {
     return `<article class="card"><h3>${escapeHtml(entry.name)}</h3><p class="alert bad">${escapeHtml(doc.loadError)}</p></article>`;
@@ -868,6 +971,7 @@ function cardMarkup(entry) {
 
 function bindCards(entries) {
   for (const entry of entries) {
+    if (entry.key === "CFTC") continue;
     const history = rowsThrough(observationsOf(entry), state.end);
     const visible = rowsBetween(observationsOf(entry), state.start, state.end);
     if (!visible.length) continue;
@@ -1125,7 +1229,7 @@ function renderPanel() {
   }
 
   const entries = groupEntries(state.tab).filter((entry) => entry.visible !== false);
-  if (state.tab !== "macro") {
+  if (state.tab !== "macro" && state.tab !== "markets") {
     panelEl().innerHTML = `${libraryNote}<div class="card-grid">${entries.map(cardMarkup).join("")}</div>`;
     bindCards(entries);
     return;
@@ -1140,13 +1244,16 @@ function renderPanel() {
     }
     section.entries.push(entry);
   }
-  const order = state.catalog.section_order || SECTION_ORDER;
+  const order = state.tab === "markets"
+    ? ["Markets", "Cross-asset"]
+    : (state.catalog.section_order || SECTION_ORDER);
   sections.sort((a, b) => {
     const left = order.indexOf(a.name);
     const right = order.indexOf(b.name);
     return (left < 0 ? 99 : left) - (right < 0 ? 99 : right);
   });
-  panelEl().innerHTML = `${regimeMarkup()}${libraryNote}${sections.map((section) => `
+  const regime = state.tab === "macro" ? regimeMarkup() : "";
+  panelEl().innerHTML = `${regime}${libraryNote}${sections.map((section) => `
     <section class="macro-section">
       <h2 class="section-title">${escapeHtml(section.name)}</h2>
       <div class="card-grid">${section.entries.map(cardMarkup).join("")}</div>

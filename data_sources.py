@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import calendar
 from datetime import date, datetime, timedelta, timezone
 from io import StringIO
 import logging
@@ -136,6 +137,17 @@ MACRO_INDICATORS = (
         higher_is_bad=True,
     ),
     Indicator(
+        "DGS3MO",
+        "3-Month Treasury Yield",
+        "FRED",
+        "%",
+        "Daily",
+        change_mode="points",
+        description="3-month constant-maturity yield. Filled from the Treasury par curve when FRED fails.",
+        section="Rates and the curve",
+        higher_is_bad=True,
+    ),
+    Indicator(
         "DGS2",
         "2-Year Treasury Yield",
         "FRED",
@@ -152,9 +164,18 @@ MACRO_INDICATORS = (
         "%",
         "Daily",
         change_mode="points",
-        description="Benchmark 10-year constant-maturity Treasury yield.",
+        description="Benchmark 10-year constant-maturity Treasury yield. Filled from the Treasury par curve when FRED fails.",
         section="Rates and the curve",
         higher_is_bad=True,
+    ),
+    Indicator(
+        "COPPERGOLD",
+        "Copper / Gold",
+        "Computed",
+        "ratio",
+        "Daily",
+        description="COMEX copper futures divided by gold futures.",
+        section="Rates and the curve",
     ),
     Indicator(
         "T10Y2Y",
@@ -206,6 +227,17 @@ MACRO_INDICATORS = (
         description="10-year Treasury inflation-protected yield.",
         section="Real rates and credit",
         higher_is_bad=True,
+    ),
+    Indicator(
+        "SPEARN10",
+        "S&P earnings yield minus 10Y real",
+        "Computed",
+        "%",
+        "Monthly",
+        change_mode="points",
+        description="Trailing S&P 500 earnings yield (Multpl monthly, estimates excluded) minus the 10-year real Treasury yield.",
+        max_age_days=220,
+        section="Real rates and credit",
     ),
     Indicator(
         "T10YIE",
@@ -375,17 +407,40 @@ MACRO_SECTION_ORDER = (
     "Real rates and credit",
     "Rates and the curve",
     "Dollar",
+    "Cross-asset",
     "Growth and labor",
+)
+
+REGIME_KEYS = (
+    "DFII10",
+    "COPPERGOLD",
+    "T10Y2Y",
+    "BAMLH0A0HYM2",
+    "DTWEXBGS",
+    "NETLIQ",
+    "NFCI",
+    "^VIX",
 )
 
 
 MARKET_INDICATORS = (
-    Indicator("^GSPC", "S&P 500 Index", "Yahoo Finance", "points", "Daily"),
-    Indicator("^IXIC", "Nasdaq Composite Index", "Yahoo Finance", "points", "Daily"),
-    Indicator("BTC-USD", "Bitcoin Price (USD)", "Yahoo Finance", "$", "Daily"),
-    Indicator("^VIX", "CBOE Volatility Index", "Yahoo Finance", "points", "Daily", higher_is_bad=True),
-    Indicator("GC=F", "Gold Futures", "Yahoo Finance", "$", "Daily"),
-    Indicator("CL=F", "WTI Crude Oil Futures", "Yahoo Finance", "$", "Daily", higher_is_bad=True),
+    Indicator("^GSPC", "S&P 500 Index", "Yahoo Finance", "points", "Daily", section="Markets"),
+    Indicator("^IXIC", "Nasdaq Composite Index", "Yahoo Finance", "points", "Daily", section="Markets"),
+    Indicator("BTC-USD", "Bitcoin Price (USD)", "Yahoo Finance", "$", "Daily", section="Cross-asset"),
+    Indicator("^VIX", "CBOE Volatility Index", "Yahoo Finance", "points", "Daily", section="Cross-asset", higher_is_bad=True),
+    Indicator("GC=F", "Gold Futures", "Yahoo Finance", "$", "Daily", section="Cross-asset"),
+    Indicator("CL=F", "WTI Crude Oil Futures", "Yahoo Finance", "$", "Daily", section="Cross-asset", higher_is_bad=True),
+    Indicator("^MOVE", "MOVE Index", "Yahoo Finance", "index", "Daily", section="Cross-asset", higher_is_bad=True),
+    Indicator("HG=F", "Copper Futures", "Yahoo Finance", "$", "Daily", section="Cross-asset", visible=False),
+    Indicator(
+        "CFTC",
+        "Speculative positioning",
+        "Computed",
+        "contracts",
+        "Weekly",
+        section="Cross-asset",
+        description="CFTC leveraged-money net (long minus short) for 10-year notes, E-mini S&P 500, and the dollar index.",
+    ),
 )
 
 # A representative, maintainable basket of 20 of the largest US-listed companies.
@@ -428,7 +483,7 @@ def observation_window(today: date | None = None) -> tuple[date, date, date]:
 def company_indicators() -> tuple[Indicator, ...]:
     """Indicators for the representative large-cap basket, in display order."""
     return tuple(
-        Indicator(ticker, f"{name} ({ticker})", "Yahoo Finance", "$", "Daily")
+        Indicator(ticker, f"{name} ({ticker})", "Yahoo Finance", "$", "Daily", section="Companies")
         for ticker, name in TOP_COMPANY_TICKERS.items()
     )
 
@@ -468,6 +523,73 @@ def validate_fred_response(frame: pd.DataFrame, series_id: str) -> pd.DataFrame:
     return frame
 
 
+def _as_date(value: date | pd.Timestamp | str | None) -> date | None:
+    if value is None:
+        return None
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        return date.fromisoformat(value[:10])
+    stamp = pd.Timestamp(value)
+    if stamp.tzinfo is not None:
+        stamp = stamp.tz_convert(None)
+    return stamp.date()
+
+
+def _add_months(day: date, months: int) -> date:
+    month_index = day.month - 1 + months
+    year = day.year + month_index // 12
+    month = month_index % 12 + 1
+    last = calendar.monthrange(year, month)[1]
+    return date(year, month, min(day.day, last))
+
+
+def _add_business_days(day: date, count: int) -> date:
+    current = day
+    added = 0
+    while added < count:
+        current += timedelta(days=1)
+        if current.weekday() < 5:
+            added += 1
+    return current
+
+
+def release_deadline(latest: date, frequency: str) -> date:
+    """Date after which the next scheduled release, plus a grace window, has been missed."""
+    if frequency == "Daily":
+        return _add_business_days(latest, 2)
+    if frequency == "Weekly":
+        return latest + timedelta(days=11)
+    if frequency == "Monthly":
+        return _add_months(latest, 2) + timedelta(days=22)
+    if frequency == "Quarterly":
+        return _add_months(latest, 7) + timedelta(days=14)
+    return latest + timedelta(days=30)
+
+
+def release_is_stale(
+    latest: date | pd.Timestamp | str | None,
+    frequency: str,
+    as_of: date | pd.Timestamp | str,
+    max_age_days: int | None = None,
+) -> bool:
+    """True only after the next release date and its grace window have passed.
+
+    A monthly CPI or quarterly GDP print that is simply waiting for the next
+    release is not stale. ``max_age_days`` can extend that wait for a series
+    the source itself delays.
+    """
+    latest_day = _as_date(latest)
+    current = _as_date(as_of)
+    if latest_day is None or current is None:
+        return True
+    if current <= release_deadline(latest_day, frequency):
+        return False
+    if max_age_days is not None and (current - latest_day).days <= max_age_days:
+        return False
+    return True
+
+
 def series_freshness(
     series: pd.Series,
     frequency: str,
@@ -492,7 +614,7 @@ def series_freshness(
         "latest_date": latest_date,
         "age_days": age_days,
         "max_age_days": threshold,
-        "is_stale": age_days > threshold,
+        "is_stale": release_is_stale(latest_date, frequency, reference_date, max_age_days),
     }
 
 
@@ -951,7 +1073,27 @@ def fred_refresh_chip(entries: list[dict]) -> str | None:
     return "Some FRED series held over"
 
 
-def regime_readout(entries: list[dict]) -> str:
+def regime_inputs_stale(entries: list[dict], as_of: date | pd.Timestamp | str) -> bool:
+    """Most regime-line inputs are held over or past their next release."""
+    by_key = {entry.get("key"): entry for entry in entries}
+    present = [by_key[key] for key in REGIME_KEYS if key in by_key]
+    if not present:
+        return False
+    stale = 0
+    for entry in present:
+        held = entry.get("status") in {"preserved", "error"}
+        late = release_is_stale(
+            entry.get("latest_date"),
+            str(entry.get("frequency") or "Daily"),
+            as_of,
+            entry.get("max_age_days"),
+        )
+        if held or late:
+            stale += 1
+    return stale * 2 > len(present)
+
+
+def regime_readout(entries: list[dict], as_of: date | pd.Timestamp | str | None = None) -> str:
     """One rule-based line from the regime-strip series."""
     by_key = {entry["key"]: entry for entry in entries}
 
@@ -1027,6 +1169,8 @@ def regime_readout(entries: list[dict]) -> str:
         stance = "easing"
     else:
         stance = "mixed"
+    if as_of is not None and regime_inputs_stale(entries, as_of):
+        stance = "stale — no call"
     return " · ".join(parts) + f" → {stance}"
 
 

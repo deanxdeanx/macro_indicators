@@ -8,7 +8,7 @@
   "description": "",
   "transform": "none",
   "max_age_days": null,
-  "section": "Growth and labor",
+  "section": "Markets",
   "higher_is_bad": false,
   "visible": true,
   "group": "markets",
@@ -16,7 +16,7 @@
   "status": "ok",
   "observation_count": 1723,
   "latest_date": "2026-11-09",
-  "fetched_at": "2026-11-09T23:00:07Z",
+  "fetched_at": "2026-11-10T07:15:34Z",
   "observations": [
     [
       "2020-01-02",

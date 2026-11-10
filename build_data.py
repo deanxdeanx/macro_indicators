@@ -21,6 +21,16 @@ import time
 
 import pandas as pd
 
+from backup_sources import (
+    NYFED_SOURCE,
+    TREASURY_SOURCE,
+    earnings_yield_minus_real,
+    fetch_cftc_positions,
+    fetch_earnings_yield,
+    fetch_nyfed_rate,
+    fetch_treasury_yields,
+    price_ratio,
+)
 from data_sources import (
     MACRO_INDICATORS,
     MARKET_INDICATORS,
@@ -48,6 +58,8 @@ DEFAULT_DATA_DIR = Path("site/data")
 # and retries fewer times so a dead host does not fill the whole job.
 FRED_WORKERS = 1
 FRED_RETRY_BACKOFF = 2.0
+TREASURY_BACKUP_KEYS = {"DGS3MO", "DGS2", "DGS10"}
+NYFED_BACKUP_KEYS = {"SOFR", "DFF"}
 
 
 def series_file_id(key: str) -> str:
@@ -393,6 +405,7 @@ def build_snapshot(
         view_start = fetch_start
 
     moment = utc_now_iso(now)
+    _backup_fred_series.cache = {}
     fred_pace = {"consecutive_timeouts": 0}
     fetch = fetcher or default_fetcher(timeout, fred_pace)
     outcomes: dict[str, tuple[str, object]] = {}
@@ -476,6 +489,19 @@ def build_snapshot(
             counts["ok"] += 1
         except Exception as exc:
             message = _public_error(exc)
+            backup = _backup_fred_series(indicator, fetch_start, fetch_end, timeout)
+            if backup is not None:
+                series, source_name = backup
+                observations = observations_from_series(series)
+                if observations:
+                    backed = {**meta, "source": source_name}
+                    document = series_document(backed, observations, status="ok", fetched_at=moment)
+                    if write_json(path, document):
+                        changed = True
+                    entry = catalog_entry(document, status="ok", last_attempt_at=moment, last_error=None)
+                    counts["ok"] += 1
+                    entries.append(entry)
+                    continue
             if previous_is_usable(previous):
                 entry = catalog_entry(
                     _catalog_source_from_previous(meta, previous),
@@ -515,7 +541,7 @@ def build_snapshot(
         "yahoo_as_of": dates["yahoo_as_of"],
         "data_through": dates["data_through"],
         "as_of_label": as_of_label(dates),
-        "regime_readout": regime_readout(entries),
+        "regime_readout": regime_readout(entries, as_of=moment[:10]),
         "fred_chip": fred_refresh_chip(entries),
         "section_order": list(MACRO_SECTION_ORDER),
         "counts": counts,
@@ -536,6 +562,183 @@ def build_snapshot(
         "data_dir": str(data_path),
         "fred_failure": fred_failure,
     }
+
+
+def _backup_fred_series(
+    indicator: Indicator,
+    start: date,
+    end: date,
+    timeout: float,
+) -> tuple[pd.Series, str] | None:
+    """Treasury par yields or New York Fed rates after a FRED miss. None when unused or down."""
+    if indicator.key not in TREASURY_BACKUP_KEYS and indicator.key not in NYFED_BACKUP_KEYS:
+        return None
+    cache = getattr(_backup_fred_series, "cache", {})
+    try:
+        if indicator.key in TREASURY_BACKUP_KEYS:
+            book = cache.get("treasury")
+            if book is None:
+                book = fetch_treasury_yields(start, end, timeout)
+                cache["treasury"] = book
+                _backup_fred_series.cache = cache
+            series = book.get(indicator.key)
+            source_name = TREASURY_SOURCE
+        else:
+            series = fetch_nyfed_rate(indicator.key, start, end, timeout)
+            source_name = NYFED_SOURCE
+    except Exception as exc:
+        logger.warning("backup_failed key=%s error=%s", indicator.key, type(exc).__name__)
+        return None
+    if series is None or series.dropna().empty:
+        return None
+    return series, source_name
+
+
+def _place_entry(entries: list[dict], entry: dict, after_key: str | None) -> None:
+    if after_key:
+        for index, existing in enumerate(entries):
+            if existing.get("key") == after_key:
+                entries.insert(index + 1, entry)
+                return
+    entries.append(entry)
+
+
+def _write_preserved_or_error(
+    path: Path,
+    meta: dict,
+    previous: dict | None,
+    entries: list[dict],
+    counts: dict[str, int],
+    moment: str,
+    message: str,
+    after_key: str | None = None,
+) -> None:
+    if previous_is_usable(previous):
+        entry = catalog_entry(
+            _catalog_source_from_previous(meta, previous),
+            status="preserved",
+            last_attempt_at=moment,
+            last_error=message,
+        )
+        counts["preserved"] += 1
+    else:
+        document = series_document(meta, [], status="error", fetched_at=None)
+        write_json(path, document)
+        entry = catalog_entry(document, status="error", last_attempt_at=moment, last_error=message)
+        counts["error"] += 1
+    _place_entry(entries, entry, after_key)
+
+
+def _write_price_ratio(
+    data_path: Path,
+    grouped_indicator: tuple[str, Indicator],
+    entries: list[dict],
+    by_key: dict[str, dict],
+    counts: dict[str, int],
+    moment: str,
+    numerator_key: str,
+    denominator_key: str,
+    after_key: str,
+) -> None:
+    group, indicator = grouped_indicator
+    meta = metadata_for(indicator, group)
+    path = data_path / meta["file"]
+    previous = load_json(path)
+    try:
+        numerator = _scaled_component(data_path, numerator_key, "none")
+        denominator = _scaled_component(data_path, denominator_key, "none")
+        if numerator is None or denominator is None:
+            raise DataSourceError(f"{indicator.key} needs {numerator_key} and {denominator_key}.")
+        ratio = price_ratio(numerator, denominator, indicator.key)
+        observations = observations_from_series(ratio)
+        if not observations:
+            raise DataSourceError(f"{indicator.key} had no overlapping prices.")
+        document = series_document(meta, observations, status="ok", fetched_at=moment)
+        write_json(path, document)
+        entry = catalog_entry(document, status="ok", last_attempt_at=moment, last_error=None)
+        counts["ok"] += 1
+        _place_entry(entries, entry, after_key)
+        by_key[indicator.key] = entry
+    except Exception as exc:
+        message = _public_error(exc)
+        _write_preserved_or_error(path, meta, previous, entries, counts, moment, message, after_key)
+
+
+def _write_earnings_spread(
+    data_path: Path,
+    grouped_indicator: tuple[str, Indicator],
+    entries: list[dict],
+    by_key: dict[str, dict],
+    counts: dict[str, int],
+    moment: str,
+    timeout: float,
+) -> None:
+    group, indicator = grouped_indicator
+    meta = metadata_for(indicator, group)
+    path = data_path / meta["file"]
+    previous = load_json(path)
+    try:
+        real_yield = _scaled_component(data_path, "DFII10", "none")
+        if real_yield is None:
+            raise DataSourceError("The earnings-yield spread needs the 10-year real yield.")
+        earnings_yield = fetch_earnings_yield(timeout)
+        spread = earnings_yield_minus_real(earnings_yield, real_yield)
+        observations = observations_from_series(spread)
+        if not observations:
+            raise DataSourceError("The earnings-yield spread had no overlapping dates.")
+        document = series_document(meta, observations, status="ok", fetched_at=moment)
+        write_json(path, document)
+        entry = catalog_entry(document, status="ok", last_attempt_at=moment, last_error=None)
+        counts["ok"] += 1
+        _place_entry(entries, entry, "DFII10")
+        by_key[indicator.key] = entry
+    except Exception as exc:
+        message = _public_error(exc)
+        logger.warning("earnings_spread_failed error=%s", type(exc).__name__)
+        _write_preserved_or_error(path, meta, previous, entries, counts, moment, message, "DFII10")
+
+
+def _write_cftc(
+    data_path: Path,
+    grouped_indicator: tuple[str, Indicator],
+    entries: list[dict],
+    by_key: dict[str, dict],
+    counts: dict[str, int],
+    moment: str,
+    timeout: float,
+) -> None:
+    group, indicator = grouped_indicator
+    meta = metadata_for(indicator, group)
+    path = data_path / meta["file"]
+    previous = load_json(path)
+    try:
+        start = date(date.today().year - 3, 1, 1)
+        markets = fetch_cftc_positions(start, timeout)
+        observations = markets[0]["observations"]
+        document = series_document(meta, observations, status="ok", fetched_at=moment)
+        document["markets"] = markets
+        document["display"] = "positions"
+        write_json(path, document)
+        entry = catalog_entry(document, status="ok", last_attempt_at=moment, last_error=None)
+        counts["ok"] += 1
+    except Exception as exc:
+        message = _public_error(exc)
+        logger.warning("cftc_failed error=%s", type(exc).__name__)
+        if previous_is_usable(previous):
+            entry = catalog_entry(
+                _catalog_source_from_previous(meta, previous),
+                status="preserved",
+                last_attempt_at=moment,
+                last_error=message,
+            )
+            counts["preserved"] += 1
+        else:
+            document = series_document(meta, [], status="error", fetched_at=None)
+            write_json(path, document)
+            entry = catalog_entry(document, status="error", last_attempt_at=moment, last_error=message)
+            counts["error"] += 1
+    entries.append(entry)
+    by_key[indicator.key] = entry
 
 
 def _series_from_document(document: dict | None) -> pd.Series | None:
@@ -573,6 +776,12 @@ def _add_derived_series(
         _write_funds_spread(data_path, indicators["DGS2DFF"], entries, by_key, counts, moment)
     if "SOFRIORB" in indicators:
         _write_funding_spread(data_path, indicators["SOFRIORB"], entries, by_key, counts, moment)
+    if "COPPERGOLD" in indicators:
+        _write_price_ratio(data_path, indicators["COPPERGOLD"], entries, by_key, counts, moment, "HG=F", "GC=F", "DGS10")
+    if "SPEARN10" in indicators:
+        _write_earnings_spread(data_path, indicators["SPEARN10"], entries, by_key, counts, moment, timeout)
+    if "CFTC" in indicators:
+        _write_cftc(data_path, indicators["CFTC"], entries, by_key, counts, moment, timeout)
 
 
 def _write_net_liquidity(

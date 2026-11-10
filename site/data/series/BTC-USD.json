@@ -8,15 +8,15 @@
   "description": "",
   "transform": "none",
   "max_age_days": null,
-  "section": "Growth and labor",
+  "section": "Cross-asset",
   "higher_is_bad": false,
   "visible": true,
   "group": "markets",
   "file": "series/BTC-USD.json",
   "status": "ok",
-  "observation_count": 2505,
-  "latest_date": "2026-11-09",
-  "fetched_at": "2026-11-09T23:00:07Z",
+  "observation_count": 2506,
+  "latest_date": "2026-11-10",
+  "fetched_at": "2026-11-10T07:15:34Z",
   "observations": [
     [
       "2020-01-01",
@@ -10036,7 +10036,11 @@
     ],
     [
       "2026-11-09",
-      75160.632812
+      75223.148438
+    ],
+    [
+      "2026-11-10",
+      74589.726562
     ]
   ]
 }
