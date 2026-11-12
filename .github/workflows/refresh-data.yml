@@ -61,7 +61,31 @@ jobs:
           fi
 
       - name: Upload GitHub Pages artifact
+        id: upload
         if: always() && steps.build.outcome != 'cancelled'
+        uses: actions/upload-pages-artifact@v3
+        continue-on-error: true
+        with:
+          path: site
+
+      - name: Wait before retrying the Pages upload
+        if: always() && steps.build.outcome != 'cancelled' && steps.upload.outcome == 'failure'
+        run: sleep 20
+
+      - name: Retry GitHub Pages upload
+        id: upload_retry
+        if: always() && steps.build.outcome != 'cancelled' && steps.upload.outcome == 'failure'
+        uses: actions/upload-pages-artifact@v3
+        continue-on-error: true
+        with:
+          path: site
+
+      - name: Wait before the last Pages upload
+        if: always() && steps.build.outcome != 'cancelled' && steps.upload.outcome == 'failure' && steps.upload_retry.outcome == 'failure'
+        run: sleep 40
+
+      - name: Retry GitHub Pages upload again
+        if: always() && steps.build.outcome != 'cancelled' && steps.upload.outcome == 'failure' && steps.upload_retry.outcome == 'failure'
         uses: actions/upload-pages-artifact@v3
         with:
           path: site
@@ -85,4 +109,23 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Wait before retrying the Pages deploy
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 20
+
+      - name: Retry GitHub Pages deploy
+        id: deployment_retry
+        if: steps.deployment.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Wait before the last Pages deploy
+        if: steps.deployment.outcome == 'failure' && steps.deployment_retry.outcome == 'failure'
+        run: sleep 40
+
+      - name: Retry GitHub Pages deploy again
+        if: steps.deployment.outcome == 'failure' && steps.deployment_retry.outcome == 'failure'
         uses: actions/deploy-pages@v4

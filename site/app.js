@@ -338,7 +338,7 @@ function readRange() {
 function renderBanners() {
   const today = todayISO();
   const pieces = [];
-  const preserved = state.catalog.series.filter((entry) => entry.status === "preserved");
+  const preserved = state.catalog.series.filter((entry) => entry.status === "preserved" || entry.inputs_stale);
   const missing = state.catalog.series.filter((entry) => entry.status === "error" || !entry.observation_count);
   const builtOn = (state.catalog.generated_at || "").slice(0, 10);
   if (builtOn && civilDays(builtOn, today) > 3) {
@@ -360,7 +360,7 @@ function chartElementId(entry) {
 }
 
 const FONT_STACK = '"Instrument Sans", ui-sans-serif, system-ui, sans-serif';
-const AXIS_FONT = { family: FONT_STACK, color: "rgba(255,255,255,0.42)", size: 11 };
+const AXIS_FONT = { family: FONT_STACK, color: "rgba(255,255,255,0.68)", size: 11 };
 const LABEL_FONT = { family: FONT_STACK, color: "rgba(255,255,255,0.72)", size: 12 };
 
 function fillFor(color) {
@@ -612,11 +612,10 @@ function zeroLine(low, high, unit) {
   }];
 }
 
-function drawInset(elementId, rows, unit, name, focusDays = 365) {
+function drawInset(elementId, rows, unit, name) {
   const node = document.getElementById(elementId);
   if (!node || !rows.length || typeof Plotly === "undefined") return;
-  const focus = recentWindow(rows, focusDays);
-  const y = yAxis(focus.map((row) => row[1]), unit);
+  const y = yAxis(rows.map((row) => row[1]), unit);
   const layout = {
     ...baseLayout(180, 28),
     showlegend: false,
@@ -639,6 +638,7 @@ function drawInset(elementId, rows, unit, name, focusDays = 365) {
     y: rows.map((row) => row[1]),
     type: "scatter",
     mode: "lines",
+    connectgaps: true,
     line: { color: LINE_SECONDARY, width: 1.25 },
     customdata: rows.map((row) => formatHoverValue(row[1], unit)),
     hovertemplate: `%{customdata}<extra>${escapeHtml(name)}</extra>`,
@@ -766,7 +766,9 @@ const SECTION_ORDER = [
   "Real rates and credit",
   "Rates and the curve",
   "Dollar",
+  "Global",
   "Cross-asset",
+  "Breadth",
   "Growth and labor",
 ];
 
@@ -814,13 +816,61 @@ function ordinal(value) {
   return `${rounded}${suffix}`;
 }
 
+function cardIsWide(entry) {
+  const doc = state.series.get(entry.key);
+  return Boolean(doc && Array.isArray(doc.overlay) && doc.overlay.length);
+}
+
+function arrangeCards(entries) {
+  const pending = entries.slice();
+  const arranged = [];
+  const regular = [];
+  const flush = () => {
+    arranged.push(...regular.splice(0, regular.length));
+  };
+  while (pending.length) {
+    const entry = pending.shift();
+    entry.spanRow = false;
+    if (!cardIsWide(entry)) {
+      regular.push(entry);
+      continue;
+    }
+    if (regular.length % 2 === 1) {
+      const next = pending.findIndex((item) => !cardIsWide(item));
+      if (next >= 0) regular.push(pending.splice(next, 1)[0]);
+    }
+    flush();
+    arranged.push(entry);
+  }
+  flush();
+  let trailing = 0;
+  for (let index = arranged.length - 1; index >= 0; index -= 1) {
+    if (cardIsWide(arranged[index])) break;
+    trailing += 1;
+  }
+  if (trailing % 2 === 1 && arranged.length) arranged[arranged.length - 1].spanRow = true;
+  return arranged;
+}
+
+function weekMoversLine() {
+  const movers = Array.isArray(state.catalog.week_movers) ? state.catalog.week_movers : [];
+  if (!movers.length) return "";
+  const parts = movers.slice(0, 5).map((item) => {
+    const z = Number(item.z);
+    const sign = z > 0 ? "+" : "";
+    const tone = deltaClass(item.week_change, item.higher_is_bad);
+    return `<span class="delta ${tone}">${escapeHtml(item.name)} ${sign}${z.toFixed(1)}σ</span>`;
+  }).join('<span class="mover-gap"> · </span>');
+  return `<p class="week-movers">What moved this week: ${parts}</p>`;
+}
+
 function regimeInputsStale() {
   const today = todayISO();
   const present = REGIME.map(([key]) => byKey().get(key)).filter(Boolean);
   if (!present.length) return false;
   let stale = 0;
   for (const entry of present) {
-    const held = entry.status === "preserved" || entry.status === "error";
+    const held = entry.status === "preserved" || entry.status === "error" || entry.inputs_stale;
     if (held || releaseIsStale(entry.latest_date, entry.frequency, today, entry.max_age_days)) stale += 1;
   }
   return stale * 2 > present.length;
@@ -843,6 +893,7 @@ function regimeMarkup() {
     ? `<p class="regime-readout${staleClass}">${escapeHtml(verdict)}</p>`
     : "";
   const legend = `<p class="regime-legend">Red means the latest week was bad for risk assets: a rise when higher is bad, or a fall when higher is good. Green means the move was supportive.</p>`;
+  const movers = weekMoversLine();
   const tiles = REGIME.map(([key, label]) => {
     const entry = byKey().get(key);
     if (!entry) {
@@ -877,7 +928,7 @@ function regimeMarkup() {
         <p class="regime-pct">${escapeHtml(pct)}</p>
       </article>`;
   }).join("");
-  return `<section class="regime-block"><div class="regime-head">${readout}${chip}</div>${legend}<div class="regime" aria-label="Risk regime">${tiles}</div></section>`;
+  return `<section class="regime-block"><div class="regime-head">${readout}${chip}</div>${legend}${movers}<div class="regime" aria-label="Risk regime">${tiles}</div></section>`;
 }
 
 function positionsCard(entry) {
@@ -941,15 +992,15 @@ function cardMarkup(entry) {
   if (scaledClaims) {
     warnings.push(`<p class="history-note">The axis uses the latest two years so recent claims are visible.</p>`);
   }
-  if (age.isStale) {
-    warnings.push(`<p class="alert warn">Latest observation is ${age.ageDays} days old; this may be stale for ${escapeHtml(entry.frequency.toLowerCase())} data.</p>`);
-  }
-  if (hasRrp) {
-    warnings.push(`<p class="history-note">Reverse repo is on this card. Its axis uses the latest four months so the recent level is visible.</p>`);
+  if (age.isStale || entry.inputs_stale) {
+    const staleText = entry.inputs_stale
+      ? (entry.last_error || "An input to this series is held over or past its release window.")
+      : `Latest observation is ${age.ageDays} days old; this may be stale for ${entry.frequency.toLowerCase()} data.`;
+    warnings.push(`<p class="alert warn">${escapeHtml(staleText)}</p>`);
   }
   const rrpChart = hasRrp ? `<div class="chart inset" id="rrp-${chartElementId(entry)}"></div>` : "";
   return `
-    <article class="card${hasOverlay ? " wide" : ""}">
+    <article class="card${hasOverlay || entry.spanRow ? " wide" : ""}">
       <div class="card-top">
         <div>
           <h3>${escapeHtml(entry.name)}</h3>
@@ -993,7 +1044,6 @@ function bindCards(entries) {
         rowsBetween(doc.rrp, state.start, state.end),
         doc.rrp_unit || "$ billions",
         doc.rrp_name || "Overnight reverse repo",
-        120,
       );
     }
   }
@@ -1244,7 +1294,7 @@ function renderPanel() {
     section.entries.push(entry);
   }
   const order = state.tab === "markets"
-    ? ["Markets", "Cross-asset"]
+    ? ["Markets", "Cross-asset", "Breadth"]
     : (state.catalog.section_order || SECTION_ORDER);
   sections.sort((a, b) => {
     const left = order.indexOf(a.name);
@@ -1255,7 +1305,7 @@ function renderPanel() {
   panelEl().innerHTML = `${regime}${libraryNote}${sections.map((section) => `
     <section class="macro-section">
       <h2 class="section-title">${escapeHtml(section.name)}</h2>
-      <div class="card-grid">${section.entries.map(cardMarkup).join("")}</div>
+      <div class="card-grid">${arrangeCards(section.entries).map(cardMarkup).join("")}</div>
     </section>`).join("")}`;
   bindCards(entries);
 }
