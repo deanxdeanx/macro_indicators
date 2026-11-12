@@ -22,14 +22,28 @@ import time
 import pandas as pd
 
 from backup_sources import (
+    ECB_SOURCE,
+    H41_SERIES,
+    H41_SOURCE,
+    MOF_SOURCE,
     NYFED_SOURCE,
     TREASURY_SOURCE,
+    choose_eps,
+    daily_earnings_yield,
     earnings_yield_minus_real,
+    eps_is_old,
     fetch_cftc_positions,
-    fetch_earnings_yield,
+    fetch_dts_tga,
+    fetch_ecb_aaa_yield,
+    fetch_h41_series,
+    fetch_jgb_yield,
     fetch_nyfed_rate,
+    fetch_nyfed_rrp,
+    fetch_spx_earnings,
+    fetch_treasury_real_yield,
     fetch_treasury_yields,
     price_ratio,
+    yield_spread,
 )
 from data_sources import (
     MACRO_INDICATORS,
@@ -46,7 +60,10 @@ from data_sources import (
     range_percentile,
     MACRO_SECTION_ORDER,
     regime_readout,
+    release_is_stale,
     source_dates,
+    stale_input_reason,
+    week_move_leaders,
 )
 
 
@@ -59,7 +76,10 @@ DEFAULT_DATA_DIR = Path("site/data")
 FRED_WORKERS = 1
 FRED_RETRY_BACKOFF = 2.0
 TREASURY_BACKUP_KEYS = {"DGS3MO", "DGS2", "DGS10"}
+TREASURY_SPREAD_KEYS = {"T10Y2Y": ("DGS10", "DGS2"), "T10Y3M": ("DGS10", "DGS3MO")}
 NYFED_BACKUP_KEYS = {"SOFR", "DFF"}
+H41_BACKUP_KEYS = set(H41_SERIES)
+COPPER_GOLD_FACTOR = 1000.0
 
 
 def series_file_id(key: str) -> str:
@@ -348,6 +368,18 @@ def net_liquidity_series(walcl_billions: pd.Series, tga_billions: pd.Series, rrp
     return net
 
 
+def merge_levels(previous: pd.Series | None, update: pd.Series) -> pd.Series:
+    """Keep older history and let the newer source replace overlapping dates."""
+    incoming = update.dropna().sort_index()
+    if previous is None or previous.dropna().empty:
+        incoming.name = update.name
+        return incoming
+    combined = pd.concat([previous.dropna().sort_index(), incoming]).sort_index()
+    combined = combined[~combined.index.duplicated(keep="last")]
+    combined.name = update.name or previous.name
+    return combined
+
+
 def choose_dollar_series(
     fred: pd.Series | None,
     yahoo: pd.Series | None,
@@ -492,9 +524,16 @@ def build_snapshot(
             backup = _backup_fred_series(indicator, fetch_start, fetch_end, timeout)
             if backup is not None:
                 series, source_name = backup
+                if previous_is_usable(previous):
+                    series = merge_levels(_series_from_document(previous), series)
                 observations = observations_from_series(series)
                 if observations:
                     backed = {**meta, "source": source_name}
+                    if indicator.key == "WTREGEN" and source_name == TREASURY_SOURCE:
+                        backed["frequency"] = "Daily"
+                        backed["description"] = (
+                            "Daily Treasury general account closing balance from the Daily Treasury Statement, in billions."
+                        )
                     document = series_document(backed, observations, status="ok", fetched_at=moment)
                     if write_json(path, document):
                         changed = True
@@ -523,7 +562,20 @@ def build_snapshot(
                 counts["error"] += 1
         entries.append(entry)
 
-    _add_derived_series(data_path, grouped, entries, counts, moment, timeout)
+    as_of = date.fromisoformat(moment[:10])
+    fetch_live = fetcher is None
+    _add_derived_series(
+        data_path,
+        grouped,
+        entries,
+        counts,
+        moment,
+        timeout,
+        as_of=as_of,
+        fetch_start=fetch_start,
+        fetch_end=fetch_end,
+        fetch_live=fetch_live,
+    )
     if include_semis:
         _add_semiconductors(data_path, entries, counts, moment, timeout)
     fred_keys = [indicator.key for _, indicator in grouped if indicator.source == "FRED"]
@@ -543,6 +595,7 @@ def build_snapshot(
         "as_of_label": as_of_label(dates),
         "regime_readout": regime_readout(entries, as_of=moment[:10]),
         "fred_chip": fred_refresh_chip(entries),
+        "week_movers": _week_movers(entries, data_path, date.fromisoformat(moment[:10])),
         "section_order": list(MACRO_SECTION_ORDER),
         "counts": counts,
         "series": entries,
@@ -564,34 +617,94 @@ def build_snapshot(
     }
 
 
+def _backup_cache() -> dict:
+    cache = getattr(_backup_fred_series, "cache", None)
+    if not isinstance(cache, dict):
+        cache = {}
+        _backup_fred_series.cache = cache
+    return cache
+
+
+def _cache_load(cache: dict, name: str, loader):
+    """Run a backup fetch once. A failed fetch stays failed for the rest of the build."""
+    if name in cache:
+        cached = cache[name]
+        if isinstance(cached, BaseException):
+            raise cached
+        return cached
+    try:
+        value = loader()
+    except Exception as exc:
+        cache[name] = exc
+        raise
+    cache[name] = value
+    return value
+
+
 def _backup_fred_series(
     indicator: Indicator,
     start: date,
     end: date,
     timeout: float,
 ) -> tuple[pd.Series, str] | None:
-    """Treasury par yields or New York Fed rates after a FRED miss. None when unused or down."""
-    if indicator.key not in TREASURY_BACKUP_KEYS and indicator.key not in NYFED_BACKUP_KEYS:
+    """Public backup after a FRED miss. None when this series has no backup or the backup is down."""
+    key = indicator.key
+    supported = (
+        TREASURY_BACKUP_KEYS
+        | set(TREASURY_SPREAD_KEYS)
+        | NYFED_BACKUP_KEYS
+        | H41_BACKUP_KEYS
+        | {"RRPONTSYD", "DFII10", "T10YIE"}
+    )
+    if key not in supported:
         return None
-    cache = getattr(_backup_fred_series, "cache", {})
+    cache = _backup_cache()
     try:
-        if indicator.key in TREASURY_BACKUP_KEYS:
-            book = cache.get("treasury")
-            if book is None:
-                book = fetch_treasury_yields(start, end, timeout)
-                cache["treasury"] = book
-                _backup_fred_series.cache = cache
-            series = book.get(indicator.key)
-            source_name = TREASURY_SOURCE
-        else:
-            series = fetch_nyfed_rate(indicator.key, start, end, timeout)
-            source_name = NYFED_SOURCE
+        series, source_name = _load_backup(cache, key, start, end, timeout)
     except Exception as exc:
-        logger.warning("backup_failed key=%s error=%s", indicator.key, type(exc).__name__)
+        logger.warning("backup_failed key=%s error=%s", key, type(exc).__name__)
         return None
     if series is None or series.dropna().empty:
         return None
     return series, source_name
+
+
+def _load_backup(cache: dict, key: str, start: date, end: date, timeout: float) -> tuple[pd.Series | None, str]:
+    if key in TREASURY_BACKUP_KEYS or key in TREASURY_SPREAD_KEYS or key == "T10YIE":
+        book = _cache_load(cache, "treasury", lambda: fetch_treasury_yields(start, end, timeout))
+    else:
+        book = {}
+    if key in TREASURY_BACKUP_KEYS:
+        return book.get(key), TREASURY_SOURCE
+    if key in TREASURY_SPREAD_KEYS:
+        long_key, short_key = TREASURY_SPREAD_KEYS[key]
+        if long_key not in book or short_key not in book:
+            return None, TREASURY_SOURCE
+        return yield_spread(book[long_key], book[short_key], key), TREASURY_SOURCE
+    if key == "DFII10":
+        real = _cache_load(cache, "real", lambda: fetch_treasury_real_yield(start, end, timeout))
+        return real, TREASURY_SOURCE
+    if key == "T10YIE":
+        real = _cache_load(cache, "real", lambda: fetch_treasury_real_yield(start, end, timeout))
+        nominal = book.get("DGS10")
+        if nominal is None:
+            return None, TREASURY_SOURCE
+        return yield_spread(nominal, real, "T10YIE"), TREASURY_SOURCE
+    if key in NYFED_BACKUP_KEYS:
+        return fetch_nyfed_rate(key, start, end, timeout), NYFED_SOURCE
+    if key == "RRPONTSYD":
+        return _cache_load(cache, "rrp", lambda: fetch_nyfed_rrp(start, end, timeout)), NYFED_SOURCE
+    if key == "WTREGEN":
+        try:
+            return _cache_load(cache, "dts", lambda: fetch_dts_tga(start, end, timeout)), TREASURY_SOURCE
+        except Exception:
+            logger.warning("dts_tga_failed")
+        levels = _cache_load(cache, f"h41:{key}", lambda: fetch_h41_series(key, timeout) / 1000.0)
+        return levels, H41_SOURCE
+    if key in H41_BACKUP_KEYS:
+        levels = _cache_load(cache, f"h41:{key}", lambda: fetch_h41_series(key, timeout) / 1000.0)
+        return levels, H41_SOURCE
+    return None, ""
 
 
 def _place_entry(entries: list[dict], entry: dict, after_key: str | None) -> None:
@@ -639,6 +752,8 @@ def _write_price_ratio(
     numerator_key: str,
     denominator_key: str,
     after_key: str,
+    as_of: date,
+    factor: float = 1.0,
 ) -> None:
     group, indicator = grouped_indicator
     meta = metadata_for(indicator, group)
@@ -649,13 +764,14 @@ def _write_price_ratio(
         denominator = _scaled_component(data_path, denominator_key, "none")
         if numerator is None or denominator is None:
             raise DataSourceError(f"{indicator.key} needs {numerator_key} and {denominator_key}.")
-        ratio = price_ratio(numerator, denominator, indicator.key)
+        ratio = price_ratio(numerator, denominator, indicator.key) * factor
         observations = observations_from_series(ratio)
         if not observations:
             raise DataSourceError(f"{indicator.key} had no overlapping prices.")
         document = series_document(meta, observations, status="ok", fetched_at=moment)
         write_json(path, document)
         entry = catalog_entry(document, status="ok", last_attempt_at=moment, last_error=None)
+        _note_stale(entry, by_key, [numerator_key, denominator_key], as_of)
         counts["ok"] += 1
         _place_entry(entries, entry, after_key)
         by_key[indicator.key] = entry
@@ -672,23 +788,49 @@ def _write_earnings_spread(
     counts: dict[str, int],
     moment: str,
     timeout: float,
+    as_of: date,
+    fetch_live: bool,
 ) -> None:
     group, indicator = grouped_indicator
     meta = metadata_for(indicator, group)
     path = data_path / meta["file"]
     previous = load_json(path)
+    if not fetch_live:
+        _write_preserved_or_error(
+            path, meta, previous, entries, counts, moment,
+            "Earnings yield was not refreshed in this offline build.", "DFII10",
+        )
+        return
     try:
         real_yield = _scaled_component(data_path, "DFII10", "none")
-        if real_yield is None:
-            raise DataSourceError("The earnings-yield spread needs the 10-year real yield.")
-        earnings_yield = fetch_earnings_yield(timeout)
+        price = _scaled_component(data_path, "^GSPC", "none")
+        if real_yield is None or price is None:
+            raise DataSourceError("The earnings-yield spread needs the S&P price and the 10-year real yield.")
+        trailing, forward = fetch_spx_earnings(timeout)
+        eps, kind, eps_stamp = choose_eps(trailing, forward, as_of)
+        earnings_yield = daily_earnings_yield(price, eps)
         spread = earnings_yield_minus_real(earnings_yield, real_yield)
         observations = observations_from_series(spread)
         if not observations:
             raise DataSourceError("The earnings-yield spread had no overlapping dates.")
+        eps_day = pd.Timestamp(eps_stamp).strftime("%Y-%m-%d")
+        label = "Forward" if kind == "forward" else "Trailing"
+        meta = {
+            **meta,
+            "description": (
+                f"Daily S&P earnings yield minus the 10-year real yield. "
+                f"{label} twelve-month EPS as of {eps_day}, carried onto the S&P 500 price."
+            ),
+        }
         document = series_document(meta, observations, status="ok", fetched_at=moment)
+        document["eps_date"] = eps_day
+        document["eps_kind"] = kind
         write_json(path, document)
         entry = catalog_entry(document, status="ok", last_attempt_at=moment, last_error=None)
+        extra = None
+        if eps_is_old(eps_stamp, as_of):
+            extra = f"{label} EPS is as of {eps_day}."
+        _note_stale(entry, by_key, ["DFII10", "^GSPC"], as_of, extra)
         counts["ok"] += 1
         _place_entry(entries, entry, "DFII10")
         by_key[indicator.key] = entry
@@ -758,6 +900,16 @@ def _scaled_component(data_path: Path, key: str, scale: str) -> pd.Series | None
     return _series_from_document(load_json(data_path / "series" / f"{series_file_id(key)}.json"))
 
 
+def _note_stale(entry: dict, by_key: dict[str, dict], keys: list[str], as_of: date, extra: str | None = None) -> None:
+    """Mark a derived series when an input is held over or past its release window."""
+    reason = stale_input_reason(by_key, keys, as_of)
+    parts = [part for part in (reason, extra) if part]
+    if not parts:
+        return
+    entry["inputs_stale"] = True
+    entry["last_error"] = " ".join(parts)[:300]
+
+
 def _add_derived_series(
     data_path: Path,
     grouped: list[tuple[str, Indicator]],
@@ -765,23 +917,75 @@ def _add_derived_series(
     counts: dict[str, int],
     moment: str,
     timeout: float,
+    *,
+    as_of: date,
+    fetch_start: date,
+    fetch_end: date,
+    fetch_live: bool,
 ) -> None:
     by_key = {item["key"]: item for item in entries}
     indicators = {indicator.key: (group, indicator) for group, indicator in grouped}
     if "NETLIQ" in indicators:
-        _write_net_liquidity(data_path, indicators["NETLIQ"], entries, by_key, counts, moment)
-    if "DTWEXBGS" in indicators:
+        _write_net_liquidity(
+            data_path, indicators["NETLIQ"], entries, by_key, counts, moment,
+            as_of=as_of, fetch_start=fetch_start, fetch_end=fetch_end, fetch_live=fetch_live, timeout=timeout,
+        )
+    if "DTWEXBGS" in indicators and fetch_live:
         _refresh_dollar(data_path, indicators["DTWEXBGS"], entries, by_key, counts, moment, timeout)
     if "DGS2DFF" in indicators:
-        _write_funds_spread(data_path, indicators["DGS2DFF"], entries, by_key, counts, moment)
+        _write_funds_spread(data_path, indicators["DGS2DFF"], entries, by_key, counts, moment, as_of)
     if "SOFRIORB" in indicators:
-        _write_funding_spread(data_path, indicators["SOFRIORB"], entries, by_key, counts, moment)
+        _write_funding_spread(data_path, indicators["SOFRIORB"], entries, by_key, counts, moment, as_of)
     if "COPPERGOLD" in indicators:
-        _write_price_ratio(data_path, indicators["COPPERGOLD"], entries, by_key, counts, moment, "HG=F", "GC=F", "DGS10")
+        _write_price_ratio(
+            data_path, indicators["COPPERGOLD"], entries, by_key, counts, moment,
+            "HG=F", "GC=F", "DGS10", as_of, COPPER_GOLD_FACTOR,
+        )
     if "SPEARN10" in indicators:
-        _write_earnings_spread(data_path, indicators["SPEARN10"], entries, by_key, counts, moment, timeout)
-    if "CFTC" in indicators:
+        _write_earnings_spread(
+            data_path, indicators["SPEARN10"], entries, by_key, counts, moment, timeout, as_of, fetch_live,
+        )
+    if "RSPSPY" in indicators:
+        _write_price_ratio(
+            data_path, indicators["RSPSPY"], entries, by_key, counts, moment,
+            "RSP", "SPY", "IWM", as_of, 1.0,
+        )
+    if "KRESPY" in indicators:
+        _write_price_ratio(
+            data_path, indicators["KRESPY"], entries, by_key, counts, moment,
+            "KRE", "SPY", "KRE", as_of, 1.0,
+        )
+    if "EUR10Y" in indicators and fetch_live:
+        _write_fetched_series(
+            data_path, indicators["EUR10Y"], entries, by_key, counts, moment,
+            lambda: fetch_ecb_aaa_yield(fetch_start, fetch_end, timeout), ECB_SOURCE,
+        )
+    if "JGB10Y" in indicators and fetch_live:
+        _write_fetched_series(
+            data_path, indicators["JGB10Y"], entries, by_key, counts, moment,
+            lambda: fetch_jgb_yield(fetch_start, fetch_end, timeout), MOF_SOURCE,
+        )
+    if "CFTC" in indicators and fetch_live:
         _write_cftc(data_path, indicators["CFTC"], entries, by_key, counts, moment, timeout)
+
+
+def _direct_late(series: pd.Series | None, frequency: str, as_of: date) -> bool:
+    if series is None or series.dropna().empty:
+        return True
+    return release_is_stale(series.dropna().index[-1], frequency, as_of)
+
+
+def _prefer_daily(stored: pd.Series | None, daily: pd.Series | None) -> pd.Series | None:
+    """Use the daily print where it exists and keep older stored history before it starts."""
+    if daily is None or daily.dropna().empty:
+        return stored
+    daily = daily.dropna().sort_index()
+    if stored is None or stored.dropna().empty:
+        return daily
+    earlier = stored.dropna().sort_index()
+    earlier = earlier[earlier.index < daily.index[0]]
+    combined = pd.concat([earlier, daily]).sort_index()
+    return combined[~combined.index.duplicated(keep="last")]
 
 
 def _write_net_liquidity(
@@ -791,6 +995,12 @@ def _write_net_liquidity(
     by_key: dict[str, dict],
     counts: dict[str, int],
     moment: str,
+    *,
+    as_of: date,
+    fetch_start: date,
+    fetch_end: date,
+    fetch_live: bool,
+    timeout: float,
 ) -> None:
     group, indicator = grouped_indicator
     meta = metadata_for(indicator, group)
@@ -798,15 +1008,62 @@ def _write_net_liquidity(
     previous = load_json(path)
     try:
         walcl = _scaled_component(data_path, "WALCL", "millions_to_billions")
-        tga = _scaled_component(data_path, "WTREGEN", "millions_to_billions")
-        rrp = _scaled_component(data_path, "RRPONTSYD", "none")
+        tga_file = _scaled_component(data_path, "WTREGEN", "millions_to_billions")
+        rrp_file = _scaled_component(data_path, "RRPONTSYD", "none")
         spx = _scaled_component(data_path, "^GSPC", "none")
+        daily_tga = None
+        daily_rrp = None
+        h41_assets = None
+        if fetch_live:
+            try:
+                daily_tga = fetch_dts_tga(fetch_start, fetch_end, timeout)
+            except Exception as exc:
+                logger.warning("netliq_tga_failed error=%s", type(exc).__name__)
+            try:
+                daily_rrp = fetch_nyfed_rrp(fetch_start, fetch_end, timeout)
+            except Exception as exc:
+                logger.warning("netliq_rrp_failed error=%s", type(exc).__name__)
+            try:
+                h41_assets = fetch_h41_series("WALCL", timeout) / 1000.0
+            except Exception as exc:
+                logger.warning("netliq_h41_failed error=%s", type(exc).__name__)
+        assets_source = "FRED"
+        tga_source = "FRED"
+        rrp_source = "FRED"
+        if walcl is None and h41_assets is not None:
+            walcl = h41_assets
+            assets_source = H41_SOURCE
+        elif walcl is not None and h41_assets is not None and h41_assets.index[-1] > walcl.dropna().index[-1]:
+            walcl = merge_levels(walcl, h41_assets)
+            assets_source = H41_SOURCE
+        if daily_tga is not None:
+            tga = _prefer_daily(tga_file, daily_tga)
+            tga_source = TREASURY_SOURCE
+        else:
+            tga = tga_file
+        if daily_rrp is not None:
+            rrp = _prefer_daily(rrp_file, daily_rrp)
+            rrp_source = NYFED_SOURCE
+        else:
+            rrp = rrp_file
         if walcl is None or tga is None or rrp is None:
             raise DataSourceError("Net liquidity needs Fed assets, the Treasury general account, and reverse repo.")
         net = net_liquidity_series(walcl, tga, rrp)
         observations = observations_from_series(net)
         if not observations:
             raise DataSourceError("Net liquidity had no overlapping dates.")
+        sources = {assets_source, tga_source, rrp_source}
+        if sources == {"FRED"}:
+            meta = {**meta, "source": "Computed"}
+        else:
+            meta = {
+                **meta,
+                "source": f"{assets_source} assets · {tga_source} TGA · {rrp_source} RRP",
+                "description": (
+                    "Fed assets minus the Treasury general account minus overnight reverse repo, in billions. "
+                    "Assets are the weekly H.4.1 level carried forward. TGA and reverse repo are daily when those sources respond."
+                ),
+            }
         document = series_document(meta, observations, status="ok", fetched_at=moment)
         if spx is not None:
             aligned = spx.reindex(net.index).ffill().dropna()
@@ -819,6 +1076,21 @@ def _write_net_liquidity(
         if write_json(path, document):
             pass
         entry = catalog_entry(document, status="ok", last_attempt_at=moment, last_error=None)
+        stale_keys = []
+        extra_notes = []
+        if assets_source == "FRED":
+            stale_keys.append("WALCL")
+        elif _direct_late(walcl, "Weekly", as_of):
+            extra_notes.append("Fed assets are past their release window.")
+        if tga_source == "FRED":
+            stale_keys.append("WTREGEN")
+        elif _direct_late(tga, "Daily", as_of):
+            extra_notes.append("The Treasury general account is past its release window.")
+        if rrp_source == "FRED":
+            stale_keys.append("RRPONTSYD")
+        elif _direct_late(rrp, "Daily", as_of):
+            extra_notes.append("Reverse repo is past its release window.")
+        _note_stale(entry, by_key, stale_keys, as_of, " ".join(extra_notes) or None)
         counts["ok"] += 1
     except Exception as exc:
         message = _public_error(exc)
@@ -854,6 +1126,7 @@ def _write_funds_spread(
     by_key: dict[str, dict],
     counts: dict[str, int],
     moment: str,
+    as_of: date,
 ) -> None:
     group, indicator = grouped_indicator
     meta = metadata_for(indicator, group)
@@ -871,6 +1144,7 @@ def _write_funds_spread(
         document = series_document(meta, observations, status="ok", fetched_at=moment)
         write_json(path, document)
         entry = catalog_entry(document, status="ok", last_attempt_at=moment, last_error=None)
+        _note_stale(entry, by_key, ["DGS2", "DFF"], as_of)
         counts["ok"] += 1
     except Exception as exc:
         message = _public_error(exc)
@@ -898,6 +1172,7 @@ def _write_funding_spread(
     by_key: dict[str, dict],
     counts: dict[str, int],
     moment: str,
+    as_of: date,
 ) -> None:
     group, indicator = grouped_indicator
     meta = metadata_for(indicator, group)
@@ -916,6 +1191,7 @@ def _write_funding_spread(
         document = series_document(meta, observations, status="ok", fetched_at=moment)
         write_json(path, document)
         entry = catalog_entry(document, status="ok", last_attempt_at=moment, last_error=None)
+        _note_stale(entry, by_key, ["SOFR", "IORB"], as_of)
         counts["ok"] += 1
     except Exception as exc:
         message = _public_error(exc)
@@ -1041,6 +1317,64 @@ def _add_semiconductors(
                 entry["last_attempt_at"] = moment
                 counts["error"] += 1
         entries.append(entry)
+
+
+def _write_fetched_series(
+    data_path: Path,
+    grouped_indicator: tuple[str, Indicator],
+    entries: list[dict],
+    by_key: dict[str, dict],
+    counts: dict[str, int],
+    moment: str,
+    loader,
+    source_name: str,
+) -> None:
+    """Fetch one non-FRED series. A failure keeps the previous file."""
+    group, indicator = grouped_indicator
+    meta = {**metadata_for(indicator, group), "source": source_name}
+    path = data_path / meta["file"]
+    previous = load_json(path)
+    try:
+        observations = observations_from_series(loader())
+        if not observations:
+            raise DataSourceError(f"No data returned for {indicator.key}.")
+        document = series_document(meta, observations, status="ok", fetched_at=moment)
+        write_json(path, document)
+        entry = catalog_entry(document, status="ok", last_attempt_at=moment, last_error=None)
+        counts["ok"] += 1
+    except Exception as exc:
+        message = _public_error(exc)
+        logger.warning("external_fetch_failed key=%s error=%s", indicator.key, type(exc).__name__)
+        if previous_is_usable(previous):
+            entry = catalog_entry(
+                _catalog_source_from_previous(meta, previous),
+                status="preserved",
+                last_attempt_at=moment,
+                last_error=message,
+            )
+            counts["preserved"] += 1
+        else:
+            document = series_document(meta, [], status="error", fetched_at=None)
+            write_json(path, document)
+            entry = catalog_entry(document, status="error", last_attempt_at=moment, last_error=message)
+            counts["error"] += 1
+    entries.append(entry)
+    by_key[indicator.key] = entry
+
+
+def _week_movers(entries: list[dict], data_path: Path, as_of: date) -> list[dict]:
+    """Largest weekly moves already stored in this snapshot, skipping stale series."""
+    items: list[tuple[dict, pd.Series]] = []
+    for entry in entries:
+        if entry.get("group") not in {"macro", "markets"} or entry.get("key") == "CFTC":
+            continue
+        if entry.get("visible") is False:
+            continue
+        series = _series_from_document(load_json(data_path / entry["file"]))
+        if series is None:
+            continue
+        items.append((entry, series))
+    return week_move_leaders(items, as_of)
 
 
 def fred_failure_summary(entries: list[dict], fred_keys: list[str]) -> str | None:

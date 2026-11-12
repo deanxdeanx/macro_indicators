@@ -7,6 +7,12 @@ on:
       - "site/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
+  # A refresh commits with GITHUB_TOKEN, and that push does not start this
+  # workflow. Run it when Refresh data finishes, including a partial FRED
+  # failure that still published the held-over snapshot.
+  workflow_run:
+    workflows: ["Refresh data"]
+    types: [completed]
 
 permissions:
   contents: read
@@ -19,6 +25,12 @@ concurrency:
 
 jobs:
   deploy:
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (
+        github.event.workflow_run.head_branch == 'main' &&
+        (github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure')
+      )
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -26,15 +38,61 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
       - name: Upload site
+        id: upload
+        uses: actions/upload-pages-artifact@v3
+        continue-on-error: true
+        with:
+          path: site
+
+      - name: Wait before retrying the Pages upload
+        if: steps.upload.outcome == 'failure'
+        run: sleep 20
+
+      - name: Retry Pages upload
+        id: upload_retry
+        if: steps.upload.outcome == 'failure'
+        uses: actions/upload-pages-artifact@v3
+        continue-on-error: true
+        with:
+          path: site
+
+      - name: Wait before the last Pages upload
+        if: steps.upload.outcome == 'failure' && steps.upload_retry.outcome == 'failure'
+        run: sleep 40
+
+      - name: Retry Pages upload again
+        if: steps.upload.outcome == 'failure' && steps.upload_retry.outcome == 'failure'
         uses: actions/upload-pages-artifact@v3
         with:
           path: site
 
       - name: Deploy to GitHub Pages
         id: deployment
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Wait before retrying the Pages deploy
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 20
+
+      - name: Retry GitHub Pages deploy
+        id: deployment_retry
+        if: steps.deployment.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Wait before the last Pages deploy
+        if: steps.deployment.outcome == 'failure' && steps.deployment_retry.outcome == 'failure'
+        run: sleep 40
+
+      - name: Retry GitHub Pages deploy again
+        id: deployment_final
+        if: steps.deployment.outcome == 'failure' && steps.deployment_retry.outcome == 'failure'
         uses: actions/deploy-pages@v4

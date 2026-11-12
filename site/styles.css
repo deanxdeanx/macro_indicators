@@ -2,8 +2,8 @@
   color-scheme: dark;
   --bg: #061515;
   --text: #ffffff;
-  --muted: rgba(255, 255, 255, 0.55);
-  --faint: rgba(255, 255, 255, 0.42);
+  --muted: rgba(255, 255, 255, 0.82);
+  --faint: rgba(255, 255, 255, 0.7);
   --line: rgba(255, 255, 255, 0.08);
   --wash: rgba(255, 255, 255, 0.024);
   --wash-2: rgba(255, 255, 255, 0.06);
@@ -90,6 +90,19 @@ button, input { font: inherit; letter-spacing: 0; color: inherit; }
 .macro-section { margin-bottom: 1.35rem; }
 .macro-section + .macro-section { margin-top: 0.15rem; }
 .card.wide { grid-column: 1 / -1; }
+
+.week-movers {
+  margin: 0 0 0.85rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.week-movers .delta {
+  display: inline;
+  margin: 0;
+  font-size: inherit;
+}
 
 .start-date {
   display: flex;

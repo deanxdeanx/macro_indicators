@@ -174,7 +174,7 @@ MACRO_INDICATORS = (
         "Computed",
         "ratio",
         "Daily",
-        description="COMEX copper futures divided by gold futures.",
+        description="COMEX copper futures divided by gold futures, times 1,000.",
         section="Rates and the curve",
     ),
     Indicator(
@@ -233,10 +233,10 @@ MACRO_INDICATORS = (
         "S&P earnings yield minus 10Y real",
         "Computed",
         "%",
-        "Monthly",
+        "Daily",
         change_mode="points",
-        description="Trailing S&P 500 earnings yield (Multpl monthly, estimates excluded) minus the 10-year real Treasury yield.",
-        max_age_days=220,
+        description="Daily S&P 500 earnings yield minus the 10-year real yield. The yield uses the latest trailing EPS carried onto the S&P price.",
+        max_age_days=21,
         section="Real rates and credit",
     ),
     Indicator(
@@ -400,6 +400,48 @@ MACRO_INDICATORS = (
         section="Dollar",
         higher_is_bad=True,
     ),
+    Indicator(
+        "JPY=X",
+        "USD/JPY",
+        "Yahoo Finance",
+        "index",
+        "Daily",
+        description="Yen per dollar. A rise is a stronger dollar.",
+        section="Global",
+        higher_is_bad=True,
+    ),
+    Indicator(
+        "DEXCHUS",
+        "USD/CNY",
+        "FRED",
+        "index",
+        "Daily",
+        description="Onshore yuan per dollar. Yahoo's offshore USDCNH (CNH=X) publishes only the latest print, so this FRED series is the daily history.",
+        section="Global",
+        higher_is_bad=True,
+    ),
+    Indicator(
+        "EUR10Y",
+        "Euro AAA 10-Year",
+        "Computed",
+        "%",
+        "Daily",
+        change_mode="points",
+        description="ECB AAA sovereign 10-year spot rate. Yahoo does not publish a Bund yield; this is the free daily euro benchmark.",
+        section="Global",
+        higher_is_bad=True,
+    ),
+    Indicator(
+        "JGB10Y",
+        "10-Year JGB",
+        "Computed",
+        "%",
+        "Daily",
+        change_mode="points",
+        description="Japanese Ministry of Finance 10-year par yield. Yahoo does not publish a JGB yield.",
+        section="Global",
+        higher_is_bad=True,
+    ),
 )
 
 MACRO_SECTION_ORDER = (
@@ -407,6 +449,7 @@ MACRO_SECTION_ORDER = (
     "Real rates and credit",
     "Rates and the curve",
     "Dollar",
+    "Global",
     "Cross-asset",
     "Growth and labor",
 )
@@ -432,6 +475,28 @@ MARKET_INDICATORS = (
     Indicator("CL=F", "WTI Crude Oil Futures", "Yahoo Finance", "$", "Daily", section="Cross-asset", higher_is_bad=True),
     Indicator("^MOVE", "MOVE Index", "Yahoo Finance", "index", "Daily", section="Cross-asset", higher_is_bad=True),
     Indicator("HG=F", "Copper Futures", "Yahoo Finance", "$", "Daily", section="Cross-asset", visible=False),
+    Indicator("RSP", "Invesco S&P 500 Equal Weight", "Yahoo Finance", "$", "Daily", section="Breadth", visible=False),
+    Indicator("SPY", "SPDR S&P 500", "Yahoo Finance", "$", "Daily", section="Breadth", visible=False),
+    Indicator(
+        "RSPSPY",
+        "RSP / SPY",
+        "Computed",
+        "ratio",
+        "Daily",
+        description="Equal-weight S&P 500 divided by the cap-weighted S&P 500. A rise means broader leadership.",
+        section="Breadth",
+    ),
+    Indicator("IWM", "Russell 2000 ETF", "Yahoo Finance", "$", "Daily", section="Breadth"),
+    Indicator("KRE", "Regional Banks ETF", "Yahoo Finance", "$", "Daily", section="Breadth"),
+    Indicator(
+        "KRESPY",
+        "KRE / SPY",
+        "Computed",
+        "ratio",
+        "Daily",
+        description="Regional banks divided by the S&P 500. A rise means banks are leading.",
+        section="Breadth",
+    ),
     Indicator(
         "CFTC",
         "Speculative positioning",
@@ -1073,23 +1138,105 @@ def fred_refresh_chip(entries: list[dict]) -> str | None:
     return "Some FRED series held over"
 
 
+def component_is_stale(entry: dict | None, as_of: date | pd.Timestamp | str) -> bool:
+    """True when a series is missing, held over, or past its own release window."""
+    if not entry:
+        return True
+    if entry.get("status") in {"preserved", "error"} or entry.get("inputs_stale"):
+        return True
+    return release_is_stale(
+        entry.get("latest_date"),
+        str(entry.get("frequency") or "Daily"),
+        as_of,
+        entry.get("max_age_days"),
+    )
+
+
+def stale_input_reason(entries_by_key: dict[str, dict], keys: tuple[str, ...] | list[str], as_of: date | pd.Timestamp | str) -> str | None:
+    """Why a derived series should be treated as held over, or None when every input is fresh."""
+    reasons: list[str] = []
+    for key in keys:
+        entry = entries_by_key.get(key)
+        if not component_is_stale(entry, as_of):
+            continue
+        if entry is None:
+            reasons.append(f"{key} is missing")
+        elif entry.get("status") in {"preserved", "error"} or entry.get("inputs_stale"):
+            reasons.append(f"{key} is held over")
+        else:
+            reasons.append(f"{key} is past its release window")
+    if not reasons:
+        return None
+    return "Held over because " + "; ".join(reasons) + "."
+
+
+def weekly_zscore(series: pd.Series, change_mode: str = "percent") -> tuple[float, float] | None:
+    """Z-score of the latest weekly move against the history of weekly moves.
+
+    Returns ``(z, latest_change)``. The change uses the series' own units:
+    percent for prices, and a difference for points, counts, and levels.
+    """
+    clean = series.dropna().sort_index()
+    if clean.empty:
+        return None
+    weekly = clean.resample("W-FRI").last().dropna()
+    if change_mode == "percent":
+        changes = weekly.pct_change(fill_method=None).mul(100)
+    else:
+        changes = weekly.diff()
+    changes = changes.dropna()
+    if len(changes) < 8:
+        return None
+    sigma = float(changes.std(ddof=0))
+    if not math.isfinite(sigma) or sigma == 0:
+        return None
+    latest = float(changes.iloc[-1])
+    z = (latest - float(changes.mean())) / sigma
+    if not math.isfinite(z):
+        return None
+    return z, latest
+
+
+def week_move_leaders(
+    items: list[tuple[dict, pd.Series]],
+    as_of: date | pd.Timestamp | str,
+    limit: int = 5,
+) -> list[dict]:
+    """The largest week-over-week moves, scaled by each series' typical weekly move.
+
+    Stale and held-over series are left out. At most ``limit`` names are returned.
+    """
+    scored: list[dict] = []
+    for entry, series in items:
+        if entry.get("visible") is False:
+            continue
+        if component_is_stale(entry, as_of):
+            continue
+        result = weekly_zscore(series, str(entry.get("change_mode") or "percent"))
+        if result is None:
+            continue
+        z, change = result
+        scored.append(
+            {
+                "key": entry.get("key"),
+                "name": entry.get("name") or entry.get("key"),
+                "z": round(z, 2),
+                "week_change": round(change, 4),
+                "change_mode": entry.get("change_mode") or "percent",
+                "higher_is_bad": bool(entry.get("higher_is_bad")),
+            }
+        )
+    scored.sort(key=lambda item: abs(item["z"]), reverse=True)
+    return scored[:limit]
+
+
 def regime_inputs_stale(entries: list[dict], as_of: date | pd.Timestamp | str) -> bool:
     """Most regime-line inputs are held over or past their next release."""
     by_key = {entry.get("key"): entry for entry in entries}
     present = [by_key[key] for key in REGIME_KEYS if key in by_key]
     if not present:
         return False
-    stale = 0
-    for entry in present:
-        held = entry.get("status") in {"preserved", "error"}
-        late = release_is_stale(
-            entry.get("latest_date"),
-            str(entry.get("frequency") or "Daily"),
-            as_of,
-            entry.get("max_age_days"),
-        )
-        if held or late:
-            stale += 1
+    stale = sum(1 for entry in present if component_is_stale(entry, as_of))
     return stale * 2 > len(present)
 
 
