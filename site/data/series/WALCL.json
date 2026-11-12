@@ -1,7 +1,7 @@
 {
   "key": "WALCL",
   "name": "Fed Total Assets",
-  "source": "FRED",
+  "source": "Federal Reserve H.4.1",
   "unit": "$ billions",
   "frequency": "Weekly",
   "change_mode": "percent",
@@ -16,7 +16,7 @@
   "status": "ok",
   "observation_count": 358,
   "latest_date": "2026-11-04",
-  "fetched_at": "2026-11-10T07:15:34Z",
+  "fetched_at": "2026-11-12T20:50:28Z",
   "observations": [
     [
       "2020-01-01",

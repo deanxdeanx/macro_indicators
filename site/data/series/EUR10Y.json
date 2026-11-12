@@ -14,9 +14,9 @@
   "group": "macro",
   "file": "series/EUR10Y.json",
   "status": "ok",
-  "observation_count": 1754,
-  "latest_date": "2026-11-10",
-  "fetched_at": "2026-11-12T01:41:20Z",
+  "observation_count": 1755,
+  "latest_date": "2026-11-11",
+  "fetched_at": "2026-11-12T20:50:28Z",
   "observations": [
     [
       "2020-01-02",
@@ -7033,6 +7033,10 @@
     [
       "2026-11-10",
       3.330887
+    ],
+    [
+      "2026-11-11",
+      3.340083
     ]
   ]
 }

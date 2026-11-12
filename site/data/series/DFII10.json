@@ -1,7 +1,7 @@
 {
   "key": "DFII10",
   "name": "10-Year Real Yield",
-  "source": "FRED",
+  "source": "US Treasury",
   "unit": "%",
   "frequency": "Daily",
   "change_mode": "points",
@@ -14,9 +14,9 @@
   "group": "macro",
   "file": "series/DFII10.json",
   "status": "ok",
-  "observation_count": 1714,
-  "latest_date": "2026-11-06",
-  "fetched_at": "2026-11-10T07:15:34Z",
+  "observation_count": 1717,
+  "latest_date": "2026-11-12",
+  "fetched_at": "2026-11-12T20:50:28Z",
   "observations": [
     [
       "2020-01-02",
@@ -6873,6 +6873,18 @@
     [
       "2026-11-06",
       2.63
+    ],
+    [
+      "2026-11-09",
+      2.66
+    ],
+    [
+      "2026-11-10",
+      2.78
+    ],
+    [
+      "2026-11-12",
+      2.86
     ]
   ]
 }

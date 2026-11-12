@@ -1,7 +1,7 @@
 {
   "key": "T10Y3M",
   "name": "10Y-3M Treasury Spread",
-  "source": "FRED",
+  "source": "US Treasury",
   "unit": "%",
   "frequency": "Daily",
   "change_mode": "points",
@@ -14,9 +14,9 @@
   "group": "macro",
   "file": "series/T10Y3M.json",
   "status": "ok",
-  "observation_count": 1715,
-  "latest_date": "2026-11-09",
-  "fetched_at": "2026-11-10T07:15:34Z",
+  "observation_count": 1717,
+  "latest_date": "2026-11-12",
+  "fetched_at": "2026-11-12T20:50:28Z",
   "observations": [
     [
       "2020-01-02",
@@ -6877,6 +6877,14 @@
     [
       "2026-11-09",
       0.64
+    ],
+    [
+      "2026-11-10",
+      0.68
+    ],
+    [
+      "2026-11-12",
+      0.78
     ]
   ]
 }
