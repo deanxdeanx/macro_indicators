@@ -272,6 +272,54 @@ MACRO_INDICATORS = (
         higher_is_bad=True,
     ),
     Indicator(
+        "HYG",
+        "High Yield Bond ETF",
+        "Yahoo Finance",
+        "$",
+        "Daily",
+        description="iShares iBoxx High Yield Corporate Bond ETF. Used with IEF to track credit when FRED spreads are stale.",
+        section="Real rates and credit",
+        visible=False,
+    ),
+    Indicator(
+        "LQD",
+        "Investment Grade Bond ETF",
+        "Yahoo Finance",
+        "$",
+        "Daily",
+        description="iShares iBoxx Investment Grade Corporate Bond ETF. Used with IEF to track credit when FRED spreads are stale.",
+        section="Real rates and credit",
+        visible=False,
+    ),
+    Indicator(
+        "IEF",
+        "7-10 Year Treasury ETF",
+        "Yahoo Finance",
+        "$",
+        "Daily",
+        description="iShares 7-10 Year Treasury Bond ETF. The denominator for the HYG and LQD credit ratios.",
+        section="Real rates and credit",
+        visible=False,
+    ),
+    Indicator(
+        "HYGIEF",
+        "HYG / IEF",
+        "Computed",
+        "ratio",
+        "Daily",
+        description="High-yield bond ETF divided by the 7–10 year Treasury ETF. A fall means high yield is lagging Treasuries. This drives the regime credit word when the FRED high-yield spread is stale.",
+        section="Real rates and credit",
+    ),
+    Indicator(
+        "LQDIEF",
+        "LQD / IEF",
+        "Computed",
+        "ratio",
+        "Daily",
+        description="Investment-grade bond ETF divided by the 7–10 year Treasury ETF. A fall means investment-grade credit is lagging Treasuries.",
+        section="Real rates and credit",
+    ),
+    Indicator(
         "M2SL",
         "US M2 Money Supply",
         "FRED",
@@ -1240,8 +1288,34 @@ def regime_inputs_stale(entries: list[dict], as_of: date | pd.Timestamp | str) -
     return stale * 2 > len(present)
 
 
-def regime_readout(entries: list[dict], as_of: date | pd.Timestamp | str | None = None) -> str:
-    """One rule-based line from the regime-strip series."""
+_SHORT_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+# A weekly move of this size in HYG/IEF or LQD/IEF is large enough to call credit.
+CREDIT_RATIO_MOVE = 0.30
+
+
+def _short_day(iso: str | None) -> str | None:
+    if not iso:
+        return None
+    try:
+        day = date.fromisoformat(str(iso)[:10])
+    except ValueError:
+        return None
+    return f"{day.day} {_SHORT_MONTHS[day.month - 1]}"
+
+
+def _regime_word(text: str, keys: list[str], *, source: str | None = None, stale: bool = False, as_of: str | None = None) -> dict:
+    shown = text
+    if source and source != "HY spread":
+        shown = f"{text} via {source}"
+    if stale:
+        label = _short_day(as_of)
+        if label:
+            shown = f"{shown} ({label})"
+    return {"text": text, "shown": shown, "source": source, "stale": bool(stale), "as_of": as_of if stale else None, "keys": keys}
+
+
+def regime_words(entries: list[dict], as_of: date | pd.Timestamp | str | None = None) -> list[dict]:
+    """One dict per regime word. A stale word carries the driving series' as-of date."""
     by_key = {entry["key"]: entry for entry in entries}
 
     def week(key: str) -> float | None:
@@ -1251,6 +1325,12 @@ def regime_readout(entries: list[dict], as_of: date | pd.Timestamp | str | None 
     def percentile(key: str) -> float | None:
         value = by_key.get(key, {}).get("range_percentile")
         return float(value) if isinstance(value, (int, float)) else None
+
+    def dated(key: str) -> tuple[bool, str | None]:
+        if as_of is None:
+            return False, None
+        entry = by_key.get(key)
+        return component_is_stale(entry, as_of), (entry or {}).get("latest_date")
 
     net = week("NETLIQ")
     if net is None:
@@ -1272,15 +1352,16 @@ def regime_readout(entries: list[dict], as_of: date | pd.Timestamp | str | None 
     else:
         rates = "real rates mid-range"
 
-    credit_change = week("BAMLH0A0HYM2")
-    if credit_change is None:
-        credit = "credit n/a"
-    elif credit_change >= 0.05:
-        credit = "credit widening"
-    elif credit_change <= -0.05:
-        credit = "credit narrowing"
-    else:
-        credit = "credit steady"
+    credit, credit_source, credit_keys = _credit_word(by_key, week, as_of)
+    credit_stale, credit_date = False, None
+    if as_of is not None:
+        stale_dates = []
+        for key in credit_keys:
+            is_stale, latest = dated(key)
+            if is_stale:
+                stale_dates.append(latest)
+        credit_stale = bool(stale_dates)
+        credit_date = stale_dates[0] if credit_stale else None
 
     dollar_change = week("DTWEXBGS")
     if dollar_change is None:
@@ -1292,9 +1373,12 @@ def regime_readout(entries: list[dict], as_of: date | pd.Timestamp | str | None 
     else:
         dollar = "dollar steady"
 
-    parts = [liquidity, rates, credit, dollar]
-    stress_labels = {"liquidity falling", "real rates high", "credit widening", "dollar firm"}
-    ease_labels = {"liquidity rising", "real rates low", "credit narrowing", "dollar soft"}
+    words = [
+        _regime_word(liquidity, ["NETLIQ"], stale=dated("NETLIQ")[0], as_of=dated("NETLIQ")[1]),
+        _regime_word(rates, ["DFII10"], stale=dated("DFII10")[0], as_of=dated("DFII10")[1]),
+        _regime_word(credit, credit_keys, source=credit_source, stale=credit_stale, as_of=credit_date),
+        _regime_word(dollar, ["DTWEXBGS"], stale=dated("DTWEXBGS")[0], as_of=dated("DTWEXBGS")[1]),
+    ]
     if "NFCI" in by_key:
         conditions_pct = percentile("NFCI")
         if conditions_pct is None:
@@ -1305,11 +1389,51 @@ def regime_readout(entries: list[dict], as_of: date | pd.Timestamp | str | None 
             conditions = "conditions easy"
         else:
             conditions = "conditions neutral"
-        parts.append(conditions)
-        stress_labels = stress_labels | {"conditions tight"}
-        ease_labels = ease_labels | {"conditions easy"}
-    stress = sum(part in stress_labels for part in parts)
-    ease = sum(part in ease_labels for part in parts)
+        words.append(_regime_word(conditions, ["NFCI"], stale=dated("NFCI")[0], as_of=dated("NFCI")[1]))
+    return words
+
+
+def _credit_from_spread(change: float | None) -> str:
+    if change is None:
+        return "credit n/a"
+    if change >= 0.05:
+        return "credit widening"
+    if change <= -0.05:
+        return "credit narrowing"
+    return "credit steady"
+
+
+def _credit_from_ratio(change: float | None) -> str:
+    """A falling bond-ETF ratio means credit is lagging Treasuries."""
+    if change is None:
+        return "credit n/a"
+    if change <= -CREDIT_RATIO_MOVE:
+        return "credit widening"
+    if change >= CREDIT_RATIO_MOVE:
+        return "credit narrowing"
+    return "credit steady"
+
+
+def _credit_word(by_key: dict[str, dict], week, as_of: date | pd.Timestamp | str | None) -> tuple[str, str, list[str]]:
+    """HY spread when it is fresh. HYG/IEF, then LQD/IEF, when that FRED spread is stale."""
+    hy_stale = as_of is not None and component_is_stale(by_key.get("BAMLH0A0HYM2"), as_of)
+    if hy_stale:
+        for key, source in (("HYGIEF", "HYG/IEF"), ("LQDIEF", "LQD/IEF")):
+            entry = by_key.get(key)
+            if entry is None or component_is_stale(entry, as_of):
+                continue
+            return _credit_from_ratio(week(key)), source, [key]
+    return _credit_from_spread(week("BAMLH0A0HYM2")), "HY spread", ["BAMLH0A0HYM2"]
+
+
+def regime_readout(entries: list[dict], as_of: date | pd.Timestamp | str | None = None) -> str:
+    """One rule-based line from the regime-strip series."""
+    words = regime_words(entries, as_of)
+    stress_labels = {"liquidity falling", "real rates high", "credit widening", "dollar firm", "conditions tight"}
+    ease_labels = {"liquidity rising", "real rates low", "credit narrowing", "dollar soft", "conditions easy"}
+    phrases = [word["text"] for word in words]
+    stress = sum(part in stress_labels for part in phrases)
+    ease = sum(part in ease_labels for part in phrases)
     if stress >= 2 and stress > ease:
         stance = "tightening"
     elif ease >= 2 and ease > stress:
@@ -1318,7 +1442,7 @@ def regime_readout(entries: list[dict], as_of: date | pd.Timestamp | str | None 
         stance = "mixed"
     if as_of is not None and regime_inputs_stale(entries, as_of):
         stance = "stale — no call"
-    return " · ".join(parts) + f" → {stance}"
+    return " · ".join(word["shown"] for word in words) + f" → {stance}"
 
 
 def latest_metrics(series: pd.Series, change_mode: str = "percent") -> dict[str, float | pd.Timestamp]:
