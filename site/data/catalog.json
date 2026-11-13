@@ -10,7 +10,7 @@
   "yahoo_as_of": "2026-11-12",
   "data_through": "2026-11-12",
   "as_of_label": "FRED as of 30 Oct 2026\u201310 Nov 2026 \u00b7 Yahoo as of 12 Nov 2026",
-  "regime_readout": "liquidity steady \u00b7 real rates high \u00b7 credit steady \u00b7 dollar firm \u00b7 conditions easy \u2192 tightening",
+  "regime_readout": "liquidity steady \u00b7 real rates high \u00b7 credit narrowing via HYG/IEF \u00b7 dollar firm \u00b7 conditions easy (30 Oct) \u2192 mixed",
   "fred_chip": "FRED refresh failed \u2014 tiles may be stale",
   "week_movers": [
     {
@@ -64,7 +64,7 @@
     "Growth and labor"
   ],
   "counts": {
-    "ok": 66,
+    "ok": 71,
     "preserved": 15,
     "error": 0
   },
@@ -468,7 +468,9 @@
       "week_change": -0.3848,
       "month_change": 0.1298,
       "range_percentile": 3.2,
-      "inputs_stale": true
+      "inputs_stale": true,
+      "eps_date": "2026-06-30",
+      "eps_kind": "trailing"
     },
     {
       "key": "T10YIE",
@@ -544,6 +546,131 @@
       "week_change": -0.01,
       "month_change": 0.11,
       "range_percentile": 37.7
+    },
+    {
+      "key": "HYG",
+      "name": "High Yield Bond ETF",
+      "source": "Yahoo Finance",
+      "unit": "$",
+      "frequency": "Daily",
+      "change_mode": "percent",
+      "description": "iShares iBoxx High Yield Corporate Bond ETF. Used with IEF to track credit when FRED spreads are stale.",
+      "transform": "none",
+      "max_age_days": null,
+      "section": "Real rates and credit",
+      "higher_is_bad": false,
+      "visible": false,
+      "group": "macro",
+      "file": "series/HYG.json",
+      "status": "ok",
+      "observation_count": 1726,
+      "latest_date": "2026-11-12",
+      "fetched_at": "2026-11-13T14:30:03Z",
+      "last_attempt_at": "2026-11-13T14:30:03Z",
+      "last_error": null,
+      "week_change": -0.3882,
+      "month_change": 0.3772,
+      "range_percentile": 92.4
+    },
+    {
+      "key": "IEF",
+      "name": "7-10 Year Treasury ETF",
+      "source": "Yahoo Finance",
+      "unit": "$",
+      "frequency": "Daily",
+      "change_mode": "percent",
+      "description": "iShares 7-10 Year Treasury Bond ETF. The denominator for the HYG and LQD credit ratios.",
+      "transform": "none",
+      "max_age_days": null,
+      "section": "Real rates and credit",
+      "higher_is_bad": false,
+      "visible": false,
+      "group": "macro",
+      "file": "series/IEF.json",
+      "status": "ok",
+      "observation_count": 1726,
+      "latest_date": "2026-11-12",
+      "fetched_at": "2026-11-13T14:30:03Z",
+      "last_attempt_at": "2026-11-13T14:30:03Z",
+      "last_error": null,
+      "week_change": -1.9137,
+      "month_change": 1.0909,
+      "range_percentile": 53.7
+    },
+    {
+      "key": "LQD",
+      "name": "Investment Grade Bond ETF",
+      "source": "Yahoo Finance",
+      "unit": "$",
+      "frequency": "Daily",
+      "change_mode": "percent",
+      "description": "iShares iBoxx Investment Grade Corporate Bond ETF. Used with IEF to track credit when FRED spreads are stale.",
+      "transform": "none",
+      "max_age_days": null,
+      "section": "Real rates and credit",
+      "higher_is_bad": false,
+      "visible": false,
+      "group": "macro",
+      "file": "series/LQD.json",
+      "status": "ok",
+      "observation_count": 1726,
+      "latest_date": "2026-11-12",
+      "fetched_at": "2026-11-13T14:30:03Z",
+      "last_attempt_at": "2026-11-13T14:30:03Z",
+      "last_error": null,
+      "week_change": -1.5383,
+      "month_change": 0.8745,
+      "range_percentile": 75.3
+    },
+    {
+      "key": "HYGIEF",
+      "name": "HYG / IEF",
+      "source": "Computed",
+      "unit": "ratio",
+      "frequency": "Daily",
+      "change_mode": "percent",
+      "description": "High-yield bond ETF divided by the 7\u201310 year Treasury ETF. A fall means high yield is lagging Treasuries. This drives the regime credit word when the FRED high-yield spread is stale.",
+      "transform": "none",
+      "max_age_days": null,
+      "section": "Real rates and credit",
+      "higher_is_bad": false,
+      "visible": true,
+      "group": "macro",
+      "file": "series/HYGIEF.json",
+      "status": "ok",
+      "observation_count": 1726,
+      "latest_date": "2026-11-12",
+      "fetched_at": "2026-11-13T14:30:03Z",
+      "last_attempt_at": "2026-11-13T14:30:03Z",
+      "last_error": null,
+      "week_change": 1.5552,
+      "month_change": -0.7061,
+      "range_percentile": 94.4
+    },
+    {
+      "key": "LQDIEF",
+      "name": "LQD / IEF",
+      "source": "Computed",
+      "unit": "ratio",
+      "frequency": "Daily",
+      "change_mode": "percent",
+      "description": "Investment-grade bond ETF divided by the 7\u201310 year Treasury ETF. A fall means investment-grade credit is lagging Treasuries.",
+      "transform": "none",
+      "max_age_days": null,
+      "section": "Real rates and credit",
+      "higher_is_bad": false,
+      "visible": true,
+      "group": "macro",
+      "file": "series/LQDIEF.json",
+      "status": "ok",
+      "observation_count": 1726,
+      "latest_date": "2026-11-12",
+      "fetched_at": "2026-11-13T14:30:03Z",
+      "last_attempt_at": "2026-11-13T14:30:03Z",
+      "last_error": null,
+      "week_change": 0.3827,
+      "month_change": -0.214,
+      "range_percentile": 91.0
     },
     {
       "key": "M2SL",
@@ -2165,6 +2292,58 @@
       "week_change": null,
       "month_change": null,
       "range_percentile": 96.7
+    }
+  ],
+  "regime_words": [
+    {
+      "text": "liquidity steady",
+      "shown": "liquidity steady",
+      "source": null,
+      "stale": false,
+      "as_of": null,
+      "keys": [
+        "NETLIQ"
+      ]
+    },
+    {
+      "text": "real rates high",
+      "shown": "real rates high",
+      "source": null,
+      "stale": false,
+      "as_of": null,
+      "keys": [
+        "DFII10"
+      ]
+    },
+    {
+      "text": "credit narrowing",
+      "shown": "credit narrowing via HYG/IEF",
+      "source": "HYG/IEF",
+      "stale": false,
+      "as_of": null,
+      "keys": [
+        "HYGIEF"
+      ]
+    },
+    {
+      "text": "dollar firm",
+      "shown": "dollar firm",
+      "source": null,
+      "stale": false,
+      "as_of": null,
+      "keys": [
+        "DTWEXBGS"
+      ]
+    },
+    {
+      "text": "conditions easy",
+      "shown": "conditions easy (30 Oct)",
+      "source": null,
+      "stale": true,
+      "as_of": "2026-10-30",
+      "keys": [
+        "NFCI"
+      ]
     }
   ]
 }

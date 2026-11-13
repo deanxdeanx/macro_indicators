@@ -3,7 +3,8 @@ const NEGATIVE = "#e36b66";
 const NEUTRAL = "#8aa8a4";
 const LINE_PRIMARY = "#3ec1ad";
 const LINE_SECONDARY = "#e8c07a";
-const SERIES_COLORS = ["#3ec1ad", "#8fd4c8", "#e8c07a", "#9bb7ff", "#e07a9a", "#c4b5fd", "#f4f7f6", "#6ea8a4"];
+const SERIES_COLORS = ["#3ec1ad", "#8fd4c8", "#d7e6e3", "#7eb8c9", "#c4b5fd", "#e8c07a", "#f4f7f6", "#6ea8a4"];
+const TEAL_FILL = "rgba(62, 193, 173, 0.12)";
 const FRESHNESS_DAYS = { Daily: 7, Weekly: 16, Monthly: 75, Quarterly: 200 };
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const PLOT_CONFIG = { displaylogo: false, displayModeBar: false, responsive: true };
@@ -346,7 +347,7 @@ function renderBanners() {
   }
   if (preserved.length) {
     const names = preserved.map((entry) => entry.key).join(", ");
-    pieces.push(`<details class="held-details"><summary>${preserved.length} held over (view)</summary><p>${escapeHtml(names)}</p></details>`);
+    pieces.push(`<details class="held-details" open><summary>${preserved.length} held over (view)</summary><p>${escapeHtml(names)}</p></details>`);
   }
   if (missing.length) {
     pieces.push(`<p class="alert bad">${missing.length} series have no saved observations.</p>`);
@@ -639,16 +640,15 @@ function drawInset(elementId, rows, unit, name) {
     type: "scatter",
     mode: "lines",
     connectgaps: true,
-    line: { color: LINE_SECONDARY, width: 1.25 },
+    line: { color: LINE_PRIMARY, width: 1.25 },
     customdata: rows.map((row) => formatHoverValue(row[1], unit)),
     hovertemplate: `%{customdata}<extra>${escapeHtml(name)}</extra>`,
   }], layout, PLOT_CONFIG);
 }
 
-function drawLine(entry, visible, change) {
+function drawLine(entry, visible) {
   const node = document.getElementById(chartElementId(entry));
   if (!node || typeof Plotly === "undefined") return;
-  const color = chartColor(change, entry.higher_is_bad);
   const useFill = entry.change_mode === "percent";
   const trace = {
     x: visible.map((row) => row[0]),
@@ -656,12 +656,12 @@ function drawLine(entry, visible, change) {
     customdata: visible.map((row) => formatHoverValue(row[1], entry.unit)),
     type: "scatter",
     mode: "lines",
-    line: { color, width: 1.25 },
+    line: { color: LINE_PRIMARY, width: 1.25 },
     hovertemplate: `%{customdata}<extra>${escapeHtml(entry.name)}</extra>`,
   };
   if (useFill) {
     trace.fill = "tozeroy";
-    trace.fillcolor = fillFor(color);
+    trace.fillcolor = TEAL_FILL;
   }
   const yValues = axisRows(entry, visible).map((row) => row[1]);
   const y = yAxis(yValues, entry.unit);
@@ -883,15 +883,169 @@ function regimeVerdict(text) {
   return "stale — no call";
 }
 
+function entryIsStale(entry) {
+  if (!entry) return true;
+  if (entry.status === "preserved" || entry.status === "error" || entry.inputs_stale) return true;
+  return releaseIsStale(entry.latest_date, entry.frequency, todayISO(), entry.max_age_days);
+}
+
+function seriesCardId(entry) {
+  return `series-card-${String(entry.key).replace(/[^A-Za-z0-9_-]/g, "")}`;
+}
+
+function dayMonth(iso) {
+  if (!iso) return "";
+  const day = Number(iso.slice(8, 10));
+  const month = MONTHS[Number(iso.slice(5, 7)) - 1] || "";
+  return `${day} ${month}`;
+}
+
+function overviewRows(entries) {
+  return entries.filter((entry) => entry.visible !== false).map((entry) => {
+    const history = rowsThrough(observationsOf(entry), state.end);
+    const metrics = history.length ? latestMetrics(history, entry.change_mode) : null;
+    const week = storedMove(entry, "week_change", history);
+    const month = storedMove(entry, "month_change", history);
+    const percentile = Number.isFinite(entry.range_percentile) ? entry.range_percentile : NaN;
+    const age = metrics && metrics.latestDate ? civilDays(metrics.latestDate, todayISO()) : NaN;
+    return {
+      entry,
+      stale: entryIsStale(entry),
+      level: metrics ? metrics.latest : NaN,
+      week,
+      month,
+      percentile,
+      age,
+    };
+  });
+}
+
+function overviewMarkup(entries) {
+  const sort = state.tableSort || { column: "section", direction: 1 };
+  const columns = [
+    ["name", "Series"],
+    ["level", "Level"],
+    ["week", "1W"],
+    ["month", "1M"],
+    ["percentile", "5Y"],
+    ["age", "Age"],
+  ];
+  const header = columns.map(([column, label]) => {
+    const active = sort.column === column ? ` aria-sort="${sort.direction > 0 ? "ascending" : "descending"}"` : "";
+    const mark = sort.column === column ? (sort.direction > 0 ? " ↑" : " ↓") : "";
+    return `<th${active}><button type="button" data-sort="${column}">${label}${mark}</button></th>`;
+  }).join("");
+  const bySection = new Map();
+  for (const row of overviewRows(entries)) {
+    const name = row.entry.section || "Macro";
+    if (!bySection.has(name)) bySection.set(name, []);
+    bySection.get(name).push(row);
+  }
+  const direction = sort.direction;
+  const valueOf = (row) => {
+    if (sort.column === "name") return row.entry.name;
+    if (sort.column === "level") return row.level;
+    if (sort.column === "week") return row.week;
+    if (sort.column === "month") return row.month;
+    if (sort.column === "percentile") return row.percentile;
+    return row.age;
+  };
+  const order = state.catalog.section_order || SECTION_ORDER;
+  const sections = [...bySection.entries()].sort((left, right) => {
+    const leftIndex = order.indexOf(left[0]);
+    const rightIndex = order.indexOf(right[0]);
+    return (leftIndex < 0 ? 99 : leftIndex) - (rightIndex < 0 ? 99 : rightIndex);
+  });
+  const body = sections.map(([name, rows]) => {
+    const ordered = rows.slice().sort((left, right) => {
+      const a = valueOf(left);
+      const b = valueOf(right);
+      const aMissing = typeof a === "number" ? !Number.isFinite(a) : !a;
+      const bMissing = typeof b === "number" ? !Number.isFinite(b) : !b;
+      if (aMissing && bMissing) return 0;
+      if (aMissing) return 1;
+      if (bMissing) return -1;
+      if (typeof a === "string") return a.localeCompare(b) * direction;
+      return (a - b) * direction;
+    });
+    const group = `<tr class="overview-section"><th colspan="6">${escapeHtml(name)}</th></tr>`;
+    const lines = ordered.map((row) => {
+      const changeCell = (value) => {
+        if (row.stale) return `<td class="muted">${escapeHtml(formatChange(value, row.entry.change_mode))}</td>`;
+        return `<td class="delta ${deltaClass(value, row.entry.higher_is_bad)}">${escapeHtml(formatChange(value, row.entry.change_mode))}</td>`;
+      };
+      return `<tr class="${row.stale ? "stale" : ""}" data-series="${escapeHtml(seriesCardId(row.entry))}">
+        <th scope="row">${escapeHtml(row.entry.name)}</th>
+        <td>${escapeHtml(row.level === undefined || !Number.isFinite(row.level) ? "N/A" : formatValue(row.level, row.entry.unit, true))}</td>
+        ${changeCell(row.week)}
+        ${changeCell(row.month)}
+        <td class="${row.stale ? "muted" : ""}">${Number.isFinite(row.percentile) ? `${ordinal(row.percentile)}` : "n/a"}</td>
+        <td class="${row.stale ? "muted" : ""}">${Number.isFinite(row.age) ? `${row.age}d` : "n/a"}</td>
+      </tr>`;
+    }).join("");
+    return group + lines;
+  }).join("");
+  return `<section class="overview-block">
+    <h2 class="section-title">Overview</h2>
+    <div class="table-scroll overview-scroll">
+      <table class="overview">
+        <thead><tr>${header}</tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+  </section>`;
+}
+
+function bindOverview() {
+  const root = panelEl();
+  if (!root) return;
+  root.querySelectorAll("[data-sort]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const column = button.dataset.sort;
+      const current = state.tableSort || { column: "section", direction: 1 };
+      state.tableSort = {
+        column,
+        direction: current.column === column ? -current.direction : 1,
+      };
+      draw();
+    });
+  });
+  root.querySelectorAll("tr[data-series]").forEach((row) => {
+    row.addEventListener("click", () => {
+      const target = document.getElementById(row.dataset.series);
+      if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
+}
+
+function regimeReadoutHtml() {
+  const words = Array.isArray(state.catalog.regime_words) ? state.catalog.regime_words : null;
+  const verdict = regimeVerdict(state.catalog.regime_readout || "");
+  if (!words || !words.length) {
+    const staleClass = verdict.includes("stale — no call") ? " stale" : "";
+    return verdict ? `<p class="regime-readout${staleClass}">${escapeHtml(verdict)}</p>` : "";
+  }
+  const stance = (verdict.match(/→\s*(.*)$/) || [, ""])[1];
+  const stanceMuted = stance.includes("stale") ? " muted" : "";
+  const body = words.map((word) => {
+    const keys = Array.isArray(word.keys) ? word.keys : [];
+    const staleEntry = keys.map((key) => byKey().get(key)).find((entry) => entry && entryIsStale(entry));
+    const stale = Boolean(staleEntry) || word.stale;
+    const asOf = stale ? ((staleEntry && staleEntry.latest_date) || word.as_of) : "";
+    const date = asOf ? ` (${dayMonth(asOf)})` : "";
+    const source = word.source
+      ? `<span class="regime-source">${escapeHtml(word.source)}</span>`
+      : "";
+    return `<span class="regime-word${stale ? " stale" : ""}">${escapeHtml(word.text)}<span class="regime-asof">${escapeHtml(date)}</span>${source}</span>`;
+  }).join('<span class="regime-sep"> · </span>');
+  return `<p class="regime-readout">${body}<span class="regime-sep"> → </span><span class="regime-stance${stanceMuted}">${escapeHtml(stance)}</span></p>`;
+}
+
 function regimeMarkup() {
   const chip = state.catalog.fred_chip
     ? `<p class="fred-chip${String(state.catalog.fred_chip).startsWith("FRED refresh failed") ? " severe" : ""}">${escapeHtml(state.catalog.fred_chip)}</p>`
     : "";
-  const verdict = regimeVerdict(state.catalog.regime_readout || "");
-  const staleClass = verdict.includes("stale — no call") ? " stale" : "";
-  const readout = verdict
-    ? `<p class="regime-readout${staleClass}">${escapeHtml(verdict)}</p>`
-    : "";
+  const readout = regimeReadoutHtml();
   const legend = `<p class="regime-legend">Red means the latest week was bad for risk assets: a rise when higher is bad, or a fall when higher is good. Green means the move was supportive.</p>`;
   const movers = weekMoversLine();
   const tiles = REGIME.map(([key, label]) => {
@@ -916,7 +1070,7 @@ function regimeMarkup() {
       ? `<p class="regime-src">${escapeHtml(entry.source)}</p>`
       : "";
     return `
-      <article class="regime-tile ${tone}">
+      <article class="regime-tile ${tone}${entryIsStale(entry) ? " stale" : ""}">
         <p class="regime-kicker">${escapeHtml(label)}</p>
         ${backup}
         <p class="regime-value">${escapeHtml(latest)}</p>
@@ -999,13 +1153,19 @@ function cardMarkup(entry) {
     warnings.push(`<p class="alert warn">${escapeHtml(staleText)}</p>`);
   }
   const rrpChart = hasRrp ? `<div class="chart inset" id="rrp-${chartElementId(entry)}"></div>` : "";
+  const epsDate = entry.eps_date || (doc && doc.eps_date);
+  const epsKind = entry.eps_kind || (doc && doc.eps_kind) || "trailing";
+  const epsLine = epsDate
+    ? `<p class="eps-date">${epsKind === "forward" ? "Forward" : "Trailing"} EPS as of ${escapeHtml(formatLong(epsDate))}</p>`
+    : "";
   return `
-    <article class="card${hasOverlay || entry.spanRow ? " wide" : ""}">
+    <article class="card${hasOverlay || entry.spanRow ? " wide" : ""}" id="${seriesCardId(entry)}">
       <div class="card-top">
         <div>
           <h3>${escapeHtml(entry.name)}</h3>
           <p class="meta">${escapeHtml(entry.key)} · ${escapeHtml(entry.frequency)} · ${escapeHtml(entry.source)}</p>
           <p class="as-of-line">As of ${escapeHtml(formatLong(metrics.latestDate))}</p>
+          ${epsLine}
           ${description}
         </div>
         <div class="latest">
@@ -1036,7 +1196,7 @@ function bindCards(entries) {
     if (overlay.length) {
       drawDual(entry, visible, overlay, doc.overlay_name || "Overlay", doc.overlay_unit || "points");
     } else {
-      drawLine(entry, visible, headlineMove(entry, history).value);
+      drawLine(entry, visible);
     }
     if (doc && Array.isArray(doc.rrp) && doc.rrp.length) {
       drawInset(
@@ -1302,12 +1462,14 @@ function renderPanel() {
     return (left < 0 ? 99 : left) - (right < 0 ? 99 : right);
   });
   const regime = state.tab === "macro" ? regimeMarkup() : "";
-  panelEl().innerHTML = `${regime}${libraryNote}${sections.map((section) => `
+  const overview = state.tab === "macro" ? overviewMarkup(entries) : "";
+  panelEl().innerHTML = `${regime}${overview}${libraryNote}${sections.map((section) => `
     <section class="macro-section">
       <h2 class="section-title">${escapeHtml(section.name)}</h2>
       <div class="card-grid">${arrangeCards(section.entries).map(cardMarkup).join("")}</div>
     </section>`).join("")}`;
   bindCards(entries);
+  bindOverview();
 }
 
 function purgeCharts(root) {

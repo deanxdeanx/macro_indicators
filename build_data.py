@@ -60,6 +60,7 @@ from data_sources import (
     range_percentile,
     MACRO_SECTION_ORDER,
     regime_readout,
+    regime_words,
     release_is_stale,
     source_dates,
     stale_input_reason,
@@ -246,7 +247,7 @@ def catalog_entry(
     last_error: str | None,
 ) -> dict:
     moves = moves_from_observations(document.get("observations") or [], document.get("change_mode") or "percent")
-    return {
+    entry = {
         "key": document["key"],
         "name": document["name"],
         "source": document["source"],
@@ -269,6 +270,10 @@ def catalog_entry(
         "last_error": last_error,
         **moves,
     }
+    if document.get("eps_date"):
+        entry["eps_date"] = document["eps_date"]
+        entry["eps_kind"] = document.get("eps_kind") or "trailing"
+    return entry
 
 
 def _catalog_source_from_previous(meta: dict, previous: dict) -> dict:
@@ -279,13 +284,17 @@ def _catalog_source_from_previous(meta: dict, previous: dict) -> dict:
     count = previous.get("observation_count")
     if not isinstance(count, int):
         count = len(observations)
-    return {
+    carried = {
         **meta,
         "observation_count": count,
         "latest_date": latest,
         "fetched_at": previous.get("fetched_at"),
         "observations": previous.get("observations") or [],
     }
+    if previous.get("eps_date"):
+        carried["eps_date"] = previous["eps_date"]
+        carried["eps_kind"] = previous.get("eps_kind") or "trailing"
+    return carried
 
 
 def _public_error(exc: BaseException) -> str:
@@ -594,6 +603,7 @@ def build_snapshot(
         "data_through": dates["data_through"],
         "as_of_label": as_of_label(dates),
         "regime_readout": regime_readout(entries, as_of=moment[:10]),
+        "regime_words": regime_words(entries, as_of=moment[:10]),
         "fred_chip": fred_refresh_chip(entries),
         "week_movers": _week_movers(entries, data_path, date.fromisoformat(moment[:10])),
         "section_order": list(MACRO_SECTION_ORDER),
@@ -954,6 +964,16 @@ def _add_derived_series(
         _write_price_ratio(
             data_path, indicators["KRESPY"], entries, by_key, counts, moment,
             "KRE", "SPY", "KRE", as_of, 1.0,
+        )
+    if "HYGIEF" in indicators:
+        _write_price_ratio(
+            data_path, indicators["HYGIEF"], entries, by_key, counts, moment,
+            "HYG", "IEF", "BAMLC0A0CM", as_of, 1.0,
+        )
+    if "LQDIEF" in indicators:
+        _write_price_ratio(
+            data_path, indicators["LQDIEF"], entries, by_key, counts, moment,
+            "LQD", "IEF", "HYGIEF", as_of, 1.0,
         )
     if "EUR10Y" in indicators and fetch_live:
         _write_fetched_series(

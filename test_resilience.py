@@ -34,11 +34,13 @@ from data_sources import (
     company_indicators,
     regime_inputs_stale,
     regime_readout,
+    regime_words,
     release_is_stale,
     stale_input_reason,
     week_move_leaders,
     weekly_zscore,
 )
+from build_data import catalog_entry
 
 
 class ReleaseScheduleTests(unittest.TestCase):
@@ -69,6 +71,7 @@ class ReleaseScheduleTests(unittest.TestCase):
         self.assertIn("stale — no call", text)
         self.assertNotIn("tightening", text)
         self.assertNotIn("easing", text)
+        self.assertIn("credit widening (9 Nov)", text)
 
 
 class BackupParserTests(unittest.TestCase):
@@ -130,6 +133,68 @@ class CrossAssetTests(unittest.TestCase):
         series = parse_multpl_earnings_yield(html)
         self.assertEqual(list(series.index.strftime("%Y-%m-%d")), ["2026-09-01"])
         self.assertAlmostEqual(float(series.iloc[-1]), 3.5)
+
+
+class RegimeWordTests(unittest.TestCase):
+    def test_only_the_stale_word_carries_its_as_of_date(self) -> None:
+        entries = [
+            {"key": "NETLIQ", "status": "ok", "latest_date": "2026-11-12", "frequency": "Daily", "week_change": 0.4},
+            {"key": "DFII10", "status": "ok", "latest_date": "2026-11-12", "frequency": "Daily", "range_percentile": 70},
+            {"key": "BAMLH0A0HYM2", "status": "preserved", "latest_date": "2026-11-06", "frequency": "Daily", "week_change": 0.0},
+            {"key": "BAMLC0A0CM", "status": "preserved", "latest_date": "2026-11-06", "frequency": "Daily", "week_change": 0.0},
+            {"key": "DTWEXBGS", "status": "ok", "latest_date": "2026-11-12", "frequency": "Daily", "week_change": 0.0},
+            {"key": "NFCI", "status": "ok", "latest_date": "2026-11-06", "frequency": "Weekly", "range_percentile": 30},
+        ]
+        text = regime_readout(entries, as_of=date(2026, 11, 13))
+        self.assertIn("credit steady (6 Nov)", text)
+        self.assertIn("liquidity rising", text)
+        self.assertNotIn("liquidity rising (12 Nov)", text)
+        credit = next(word for word in regime_words(entries, as_of=date(2026, 11, 13)) if word["text"].startswith("credit"))
+        self.assertTrue(credit["stale"])
+        self.assertEqual(credit["source"], "HY spread")
+
+    def test_stale_hy_spread_falls_back_to_hyg_ief(self) -> None:
+        entries = [
+            {"key": "BAMLH0A0HYM2", "status": "preserved", "latest_date": "2026-11-06", "frequency": "Daily", "week_change": 0.2},
+            {"key": "BAMLC0A0CM", "status": "preserved", "latest_date": "2026-11-06", "frequency": "Daily", "week_change": 0.2},
+            {"key": "HYGIEF", "status": "ok", "latest_date": "2026-11-12", "frequency": "Daily", "week_change": -0.8},
+            {"key": "LQDIEF", "status": "ok", "latest_date": "2026-11-12", "frequency": "Daily", "week_change": 0.9},
+        ]
+        text = regime_readout(entries, as_of=date(2026, 11, 13))
+        self.assertIn("credit widening via HYG/IEF", text)
+        self.assertNotIn("(12 Nov)", text)
+        self.assertNotIn("(6 Nov)", text)
+
+    def test_lqd_ief_is_used_when_hyg_is_also_stale(self) -> None:
+        entries = [
+            {"key": "BAMLH0A0HYM2", "status": "preserved", "latest_date": "2026-11-06", "frequency": "Daily", "week_change": 0.2},
+            {"key": "HYGIEF", "status": "preserved", "latest_date": "2026-11-01", "frequency": "Daily", "week_change": -1.0},
+            {"key": "LQDIEF", "status": "ok", "latest_date": "2026-11-12", "frequency": "Daily", "week_change": 0.8},
+        ]
+        text = regime_readout(entries, as_of=date(2026, 11, 13))
+        self.assertIn("credit narrowing via LQD/IEF", text)
+
+    def test_catalog_keeps_the_eps_date(self) -> None:
+        entry = catalog_entry(
+            {
+                "key": "SPEARN10",
+                "name": "Earnings gap",
+                "source": "Computed",
+                "unit": "%",
+                "frequency": "Daily",
+                "change_mode": "points",
+                "group": "macro",
+                "file": "series/SPEARN10.json",
+                "observations": [["2026-11-12", 1.2]],
+                "eps_date": "2026-06-30",
+                "eps_kind": "trailing",
+            },
+            status="ok",
+            last_attempt_at="2026-11-13T00:00:00Z",
+            last_error=None,
+        )
+        self.assertEqual(entry["eps_date"], "2026-06-30")
+        self.assertEqual(entry["eps_kind"], "trailing")
 
 
 class DirectLiquidityTests(unittest.TestCase):
