@@ -14,9 +14,9 @@
   "group": "companies",
   "file": "series/AMZN.json",
   "status": "ok",
-  "observation_count": 1726,
-  "latest_date": "2026-11-12",
-  "fetched_at": "2026-11-12T20:50:28Z",
+  "observation_count": 1727,
+  "latest_date": "2026-11-13",
+  "fetched_at": "2026-11-13T20:29:56Z",
   "observations": [
     [
       "2020-01-02",
@@ -6920,7 +6920,11 @@
     ],
     [
       "2026-11-12",
-      267.429993
+      267.440002
+    ],
+    [
+      "2026-11-13",
+      265.670013
     ]
   ]
 }
