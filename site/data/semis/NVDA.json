@@ -10,18 +10,18 @@
   "group": "semis",
   "file": "semis/NVDA.json",
   "visible": true,
-  "market_cap": 3924685147094.73,
+  "market_cap": 3762973985290.53,
   "shares": 24100000000.0,
   "ordinary_per_share": 1,
   "eps_concept": "EarningsPerShareDiluted",
   "eps_unit": "USD/shares",
   "eps_basis": "quarterly TTM diluted EPS, split-adjusted to the current share count",
   "description": "quarterly TTM diluted EPS, split-adjusted to the current share count",
-  "price": 162.85,
-  "pe": 20.5879,
+  "price": 156.14,
+  "pe": 19.7396,
   "median_pe": 50.9645,
   "pe_percentile": 1.7,
-  "latest_date": "2026-11-13",
+  "latest_date": "2026-11-16",
   "observations": [
     [
       "2016-11-30",
@@ -504,8 +504,8 @@
       204.64
     ],
     [
-      "2026-11-13",
-      162.85
+      "2026-11-16",
+      156.14
     ]
   ],
   "pe_observations": [
@@ -990,11 +990,11 @@
       25.871
     ],
     [
-      "2026-11-13",
-      20.5879
+      "2026-11-16",
+      19.7396
     ]
   ],
   "observation_count": 121,
   "status": "ok",
-  "fetched_at": "2026-11-15T19:22:57Z"
+  "fetched_at": "2026-11-16T22:54:15Z"
 }

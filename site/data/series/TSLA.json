@@ -14,9 +14,9 @@
   "group": "companies",
   "file": "series/TSLA.json",
   "status": "ok",
-  "observation_count": 1727,
-  "latest_date": "2026-11-13",
-  "fetched_at": "2026-11-15T19:22:57Z",
+  "observation_count": 1728,
+  "latest_date": "2026-11-16",
+  "fetched_at": "2026-11-16T22:54:15Z",
   "observations": [
     [
       "2020-01-02",
@@ -6925,6 +6925,10 @@
     [
       "2026-11-13",
       390.220001
+    ],
+    [
+      "2026-11-16",
+      379.73999
     ]
   ]
 }

@@ -15,8 +15,8 @@
   "file": "series/JPY-X.json",
   "status": "ok",
   "observation_count": 1789,
-  "latest_date": "2026-11-15",
-  "fetched_at": "2026-11-15T19:22:57Z",
+  "latest_date": "2026-11-16",
+  "fetched_at": "2026-11-16T22:54:15Z",
   "observations": [
     [
       "2020-01-01",
@@ -7171,8 +7171,8 @@
       159.875
     ],
     [
-      "2026-11-15",
-      159.565002
+      "2026-11-16",
+      159.403
     ]
   ]
 }
