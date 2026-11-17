@@ -319,6 +319,20 @@ function setRangeFromCatalog() {
   startInput.value = state.start;
 }
 
+function presetStart(years) {
+  const min = state.catalog.history_start;
+  if (years === "max") return min;
+  const start = addMonths(state.end, -12 * Number(years));
+  return start < min ? min : start;
+}
+
+function markPresets() {
+  document.querySelectorAll(".preset").forEach((button) => {
+    const pressed = Boolean(state.catalog) && presetStart(button.dataset.years) === state.start;
+    button.setAttribute("aria-pressed", pressed ? "true" : "false");
+  });
+}
+
 function readRange() {
   const start = document.getElementById("range-start").value;
   const end = snapshotAsOf();
@@ -349,8 +363,9 @@ function renderBanners() {
     pieces.push(`<p class="alert warn">This snapshot was built ${formatStamp(state.catalog.generated_at)}. The scheduled refresh may not have run.</p>`);
   }
   if (preserved.length) {
-    const names = preserved.map((entry) => entry.key).join(", ");
-    pieces.push(`<details class="held-details" open><summary>${preserved.length} held over (view)</summary><p>${escapeHtml(names)}</p></details>`);
+    const names = preserved.map((entry) => `<li>${escapeHtml(entry.name || entry.key)} <span class="held-key">${escapeHtml(entry.key)}</span></li>`).join("");
+    const label = `${preserved.length} series held over from an earlier refresh`;
+    pieces.push(`<details class="held-details"><summary>${label}</summary><ul class="held-list">${names}</ul></details>`);
   }
   if (missing.length) {
     pieces.push(`<p class="alert bad">${missing.length} series have no saved observations.</p>`);
@@ -991,7 +1006,7 @@ function overviewMarkup(entries) {
         if (row.stale) return `<td class="muted">${escapeHtml(formatChange(value, row.entry.change_mode))}</td>`;
         return `<td class="delta ${deltaClass(value, row.entry.higher_is_bad)}">${escapeHtml(formatChange(value, row.entry.change_mode))}</td>`;
       };
-      return `<tr class="${row.stale ? "stale" : ""}" data-series="${escapeHtml(seriesCardId(row.entry))}">
+      return `<tr class="${row.stale ? "stale" : ""}" data-series="${escapeHtml(seriesCardId(row.entry))}" tabindex="0" title="Jump to chart">
         <th scope="row">${escapeHtml(row.entry.name)}</th>
         <td>${escapeHtml(row.level === undefined || !Number.isFinite(row.level) ? "N/A" : formatValue(row.level, row.entry.unit, true))}</td>
         ${changeCell(row.week)}
@@ -1002,10 +1017,10 @@ function overviewMarkup(entries) {
     }).join("");
     return group + lines;
   }).join("");
-  return `<section class="overview-block">
+  return `<section class="overview-block" id="sec-overview">
     <h2 class="section-title">Overview</h2>
     <div class="table-scroll overview-scroll">
-      <table class="overview">
+      <table class="overview macro-overview">
         <thead><tr>${header}</tr></thead>
         <tbody>${body}</tbody>
       </table>
@@ -1028,9 +1043,13 @@ function bindOverview() {
     });
   });
   root.querySelectorAll("tr[data-series]").forEach((row) => {
-    row.addEventListener("click", () => {
-      const target = document.getElementById(row.dataset.series);
-      if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+    const jump = () => focusCard(document.getElementById(row.dataset.series));
+    row.addEventListener("click", jump);
+    row.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        jump();
+      }
     });
   });
 }
@@ -1230,7 +1249,7 @@ function cardMarkup(entry) {
       ${rrpChart}
       <div class="card-foot">
         <span>YTD ${escapeHtml(formatChange(metrics.ytdChange, entry.change_mode))}</span>
-        <span>AS OF ${escapeHtml(formatLong(metrics.latestDate).toUpperCase())} · ${age.ageDays}D OLD</span>
+        <span>Latest print ${age.ageDays}d old</span>
         <button class="btn" type="button" data-export="${escapeHtml(entry.key)}">Export CSV</button>
       </div>
       ${warnings.join("")}
@@ -1452,6 +1471,13 @@ function valuationRows() {
 
 function renderValuation(libraryNote) {
   const sort = state.valuationSort || { column: "name", direction: 1 };
+  const allRows = valuationRows();
+  const optional = ["forwardPe", "fcfYield", "spread"];
+  const shown = new Set(["name", "price", "drawdown"]);
+  for (const column of optional) {
+    if (allRows.some((row) => Number.isFinite(row[column]))) shown.add(column);
+  }
+  const hiddenOptional = optional.some((column) => !shown.has(column));
   const columns = [
     ["name", "Name"],
     ["price", "Price"],
@@ -1459,10 +1485,11 @@ function renderValuation(libraryNote) {
     ["fcfYield", "FCF yield"],
     ["spread", "FCF − real"],
     ["drawdown", "52w drawdown"],
-  ];
+  ].filter(([column]) => shown.has(column));
   const header = columns.map(([column, label]) => {
+    const active = sort.column === column ? ` aria-sort="${sort.direction > 0 ? "ascending" : "descending"}"` : "";
     const mark = sort.column === column ? (sort.direction > 0 ? " ↑" : " ↓") : "";
-    return `<th><button type="button" data-value-sort="${column}">${label}${mark}</button></th>`;
+    return `<th${active}><button type="button" data-value-sort="${column}">${label}${mark}</button></th>`;
   }).join("");
   const valueOf = (row) => {
     if (sort.column === "name") return row.entry.name;
@@ -1480,34 +1507,38 @@ function renderValuation(libraryNote) {
     return (a - b) * sort.direction;
   };
   const rows = ["Companies", "Semiconductors"].flatMap((group) => (
-    valuationRows().filter((row) => row.group === group).sort(compareRows)
+    allRows.filter((row) => row.group === group).sort(compareRows)
   ));
   const cell = (value, digits, suffix = "") => (
     Number.isFinite(value) ? `${value.toFixed(digits)}${suffix}` : "n/a"
   );
   let lastGroup = "";
   const body = rows.map((row) => {
-    const groupRow = row.group === lastGroup ? "" : `<tr class="overview-section"><th colspan="6">${escapeHtml(row.group)}</th></tr>`;
+    const groupRow = row.group === lastGroup ? "" : `<tr class="overview-section"><th colspan="${columns.length}">${escapeHtml(row.group)}</th></tr>`;
     lastGroup = row.group;
-    const selected = state.valuationKey === row.entry.key ? " selected" : "";
-    return `${groupRow}<tr class="${selected}" data-valuation="${escapeHtml(row.entry.key)}">
+    const isSelected = state.valuationKey === row.entry.key;
+    const cells = {
+      price: `<td>${escapeHtml(formatValue(row.price, "$"))}</td>`,
+      forwardPe: `<td>${cell(row.forwardPe, 1, "x")}</td>`,
+      fcfYield: `<td>${cell(row.fcfYield, 2, "%")}</td>`,
+      spread: `<td>${cell(row.spread, 2, " pp")}</td>`,
+      drawdown: `<td class="${Number.isFinite(row.drawdown) && row.drawdown < 0 ? "delta down" : ""}">${cell(row.drawdown, 1, "%")}</td>`,
+    };
+    const rest = columns.slice(1).map(([column]) => cells[column]).join("");
+    return `${groupRow}<tr class="${isSelected ? "selected" : ""}" data-valuation="${escapeHtml(row.entry.key)}" tabindex="0" title="Show price chart">
       <th scope="row">${escapeHtml(row.entry.name)}</th>
-      <td>${cell(row.price, 2)}</td>
-      <td>${cell(row.forwardPe, 1, "x")}</td>
-      <td>${cell(row.fcfYield, 2, "%")}</td>
-      <td>${cell(row.spread, 2, " pp")}</td>
-      <td class="${Number.isFinite(row.drawdown) && row.drawdown < 0 ? "delta down" : ""}">${cell(row.drawdown, 1, "%")}</td>
+      ${rest}
     </tr>`;
   }).join("");
   const selected = rows.find((row) => row.entry.key === state.valuationKey);
   const chart = selected
     ? (selected.group === "Semiconductors" ? semiCard(selected.entry) : cardMarkup(selected.entry))
-    : `<p class="regime-legend">Select a row to open its price chart. Forward P/E and free-cash-flow yield are n/a where the free source did not return them.</p>`;
+    : "";
   panelEl().innerHTML = `
     ${libraryNote}
     <section class="overview-block">
       <h2 class="section-title">Valuation</h2>
-      <p class="regime-legend">Price and the drawdown from the 52-week high come from the stored daily or monthly prices. Forward P/E and free-cash-flow yield are shown only when a free source returned them.</p>
+      <p class="regime-legend">Price and the drawdown from the 52-week high come from the stored daily or monthly prices. ${hiddenOptional ? "Forward P/E and free-cash-flow yield columns are hidden because no free source returned them in this snapshot." : "Forward P/E and free-cash-flow yield are shown only when a free source returned them."} Select a row to open its chart below.</p>
       <div class="table-scroll overview-scroll">
         <table class="overview">
           <thead><tr>${header}</tr></thead>
@@ -1515,7 +1546,7 @@ function renderValuation(libraryNote) {
         </table>
       </div>
     </section>
-    <div class="card-grid">${chart}</div>`;
+    <div class="card-grid" id="valuation-chart">${chart}</div>`;
   panelEl().querySelectorAll("[data-value-sort]").forEach((button) => {
     button.addEventListener("click", () => {
       const column = button.dataset.valueSort;
@@ -1525,14 +1556,26 @@ function renderValuation(libraryNote) {
     });
   });
   panelEl().querySelectorAll("tr[data-valuation]").forEach((row) => {
-    row.addEventListener("click", () => {
-      state.valuationKey = row.dataset.valuation;
+    const pick = () => {
+      state.valuationKey = state.valuationKey === row.dataset.valuation ? null : row.dataset.valuation;
+      state.revealValuation = Boolean(state.valuationKey);
       draw();
+    };
+    row.addEventListener("click", pick);
+    row.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        pick();
+      }
     });
   });
   if (selected) {
     if (selected.group === "Semiconductors") drawSemi(selected.entry);
     else bindCards([selected.entry]);
+    if (state.revealValuation) {
+      state.revealValuation = false;
+      requestAnimationFrame(() => focusCard(document.querySelector("#valuation-chart .card")));
+    }
   }
 }
 
@@ -1642,13 +1685,48 @@ function renderPanel() {
   });
   const regime = state.tab === "macro" ? regimeMarkup() : "";
   const overview = state.tab === "macro" ? overviewMarkup(entries) : "";
-  panelEl().innerHTML = `${regime}${overview}${libraryNote}${sections.map((section) => `
-    <section class="macro-section">
+  const jumpTargets = (state.tab === "macro" ? [{ name: "Overview", id: "sec-overview" }] : [])
+    .concat(sections.map((section) => ({ name: section.name, id: sectionId(section.name) })));
+  const jump = jumpTargets.length > 1
+    ? `<nav class="jump" aria-label="Jump to section">${jumpTargets.map((item) => `<button class="chip" type="button" data-jump="${escapeHtml(item.id)}">${escapeHtml(item.name)}</button>`).join("")}</nav>`
+    : "";
+  panelEl().innerHTML = `${regime}${jump}${overview}${libraryNote}${sections.map((section) => `
+    <section class="macro-section" id="${sectionId(section.name)}">
       <h2 class="section-title">${escapeHtml(section.name)}</h2>
       <div class="card-grid">${arrangeCards(section.entries).map(cardMarkup).join("")}</div>
     </section>`).join("")}`;
   bindCards(entries);
   bindOverview();
+  panelEl().querySelectorAll("[data-jump]").forEach((button) => {
+    button.addEventListener("click", () => scrollToNode(document.getElementById(button.dataset.jump)));
+  });
+}
+
+function sectionId(name) {
+  return `sec-${String(name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
+}
+
+function stickyOffset() {
+  const bar = document.querySelector(".topbar");
+  if (!bar || getComputedStyle(bar).position !== "sticky") return 0;
+  return bar.getBoundingClientRect().height;
+}
+
+function scrollToNode(node) {
+  if (!node) return;
+  const top = node.getBoundingClientRect().top + window.scrollY - stickyOffset() - 12;
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  window.scrollTo({ top: Math.max(0, top), behavior: reduce ? "auto" : "smooth" });
+}
+
+function focusCard(node) {
+  if (!node) return;
+  scrollToNode(node);
+  node.classList.remove("flash");
+  void node.offsetWidth;
+  node.classList.add("flash");
+  if (!node.hasAttribute("tabindex")) node.setAttribute("tabindex", "-1");
+  node.focus({ preventScroll: true });
 }
 
 function purgeCharts(root) {
@@ -1663,6 +1741,7 @@ function draw() {
   const scrollY = window.scrollY;
   renderBanners();
   renderPanel();
+  markPresets();
   window.scrollTo(0, scrollY);
   asOfEl().textContent = state.catalog.as_of_label || `Data through ${formatLong(state.end)}`;
 }
@@ -1699,6 +1778,20 @@ async function activateTab(tab) {
 
 function bindChrome() {
   document.getElementById("range-start").addEventListener("change", draw);
+  document.querySelectorAll(".preset").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (!state.catalog) return;
+      document.getElementById("range-start").value = presetStart(button.dataset.years);
+      draw();
+    });
+  });
+  const toTop = document.getElementById("to-top");
+  const syncToTop = () => { toTop.hidden = window.scrollY < 900; };
+  window.addEventListener("scroll", syncToTop, { passive: true });
+  toTop.addEventListener("click", () => {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
+  });
   document.getElementById("controls").addEventListener("submit", (event) => event.preventDefault());
   const tabs = [...document.querySelectorAll("[role='tab']")];
   tabs.forEach((button) => {

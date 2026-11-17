@@ -17,6 +17,10 @@
 <body>
   <div class="page">
     <header class="topbar">
+      <h1 class="brand">
+        <span class="brand-mark" aria-hidden="true">MT</span>
+        <span class="brand-name">Macro Terminal</span>
+      </h1>
       <div class="tabs" role="tablist" aria-label="Dashboard sections">
         <button id="tab-macro" type="button" role="tab" aria-selected="true" aria-controls="panel" data-tab="macro">Macro indicators</button>
         <button id="tab-markets" type="button" role="tab" aria-selected="false" aria-controls="panel" data-tab="markets" tabindex="-1">Markets</button>
@@ -24,10 +28,18 @@
       </div>
       <form id="controls" class="range-lockup">
         <p id="as-of" class="as-of">Loading…</p>
-        <label class="start-date">
-          <span>Start</span>
-          <input id="range-start" name="start" type="date" required>
-        </label>
+        <div class="range-row">
+          <div class="presets" role="group" aria-label="Quick date range">
+            <button class="preset" type="button" data-years="1" aria-pressed="false">1Y</button>
+            <button class="preset" type="button" data-years="3" aria-pressed="false">3Y</button>
+            <button class="preset" type="button" data-years="5" aria-pressed="false">5Y</button>
+            <button class="preset" type="button" data-years="max" aria-pressed="false">Max</button>
+          </div>
+          <label class="start-date">
+            <span>Start</span>
+            <input id="range-start" name="start" type="date" required>
+          </label>
+        </div>
       </form>
     </header>
 
@@ -35,6 +47,8 @@
     <p id="range-message" class="message" hidden></p>
 
     <main id="panel" tabindex="-1"></main>
+
+    <button id="to-top" class="to-top" type="button" aria-label="Back to top" hidden>↑ Top</button>
 
     <footer class="site-foot">
       <p>FRED, Yahoo Finance, and SEC EDGAR. This page reads a daily snapshot; it does not call those sources from your browser. The header dates are the newest observations actually stored, not the time the refresh ran. Daily cards show the 1-week change. Rates show percentage-point changes (pp); claims show a count. Red means the move is bad for risk assets. Held-over series are listed once above the charts.</p>
