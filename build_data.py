@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import date, datetime, timezone
+from dataclasses import replace
+from datetime import date, datetime, timedelta, timezone
 import json
 import logging
 import math
@@ -28,6 +29,12 @@ from backup_sources import (
     MOF_SOURCE,
     NYFED_SOURCE,
     TREASURY_SOURCE,
+    cpi_yoy,
+    fed_funds_implied,
+    fetch_acm_term_premium,
+    fetch_bls_series,
+    fetch_dol_claims,
+    iorb_table,
     choose_eps,
     daily_earnings_yield,
     earnings_yield_minus_real,
@@ -54,7 +61,9 @@ from data_sources import (
     fetch_fred_series,
     as_of_label,
     fetch_yahoo_chart_series,
+    DEFAULT_MAX_AGE_DAYS,
     fred_refresh_chip,
+    freshness_chip,
     lagged_change,
     observation_window,
     range_percentile,
@@ -106,10 +115,21 @@ def utc_now_iso(now: datetime | None = None) -> str:
     return current.replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def with_default_age(indicator: Indicator) -> Indicator:
+    """Cap every production series at the frequency window. A tighter explicit cap is kept."""
+    default = DEFAULT_MAX_AGE_DAYS.get(indicator.frequency)
+    if default is None:
+        return indicator
+    current = indicator.max_age_days
+    if current is None or current > default:
+        return replace(indicator, max_age_days=default)
+    return indicator
+
+
 def indicator_groups() -> list[tuple[str, Indicator]]:
-    grouped = [("macro", item) for item in MACRO_INDICATORS]
-    grouped.extend(("markets", item) for item in MARKET_INDICATORS)
-    grouped.extend(("companies", item) for item in company_indicators())
+    grouped = [("macro", with_default_age(item)) for item in MACRO_INDICATORS]
+    grouped.extend(("markets", with_default_age(item)) for item in MARKET_INDICATORS)
+    grouped.extend(("companies", with_default_age(item)) for item in company_indicators())
     return grouped
 
 
@@ -573,6 +593,10 @@ def build_snapshot(
 
     as_of = date.fromisoformat(moment[:10])
     fetch_live = fetcher is None
+    _mark_aged(entries, as_of, counts)
+    if fetch_live:
+        _apply_free_backups(data_path, entries, counts, moment, as_of, fetch_start, fetch_end, timeout)
+        _mark_aged(entries, as_of, counts)
     _add_derived_series(
         data_path,
         grouped,
@@ -587,6 +611,8 @@ def build_snapshot(
     )
     if include_semis:
         _add_semiconductors(data_path, entries, counts, moment, timeout)
+    _mark_aged(entries, as_of, counts)
+    counts = _recount(entries)
     fred_keys = [indicator.key for _, indicator in grouped if indicator.source == "FRED"]
     fred_failure = fred_failure_summary(entries, fred_keys)
     dates = source_dates(entries)
@@ -605,6 +631,7 @@ def build_snapshot(
         "regime_readout": regime_readout(entries, as_of=moment[:10]),
         "regime_words": regime_words(entries, as_of=moment[:10]),
         "fred_chip": fred_refresh_chip(entries),
+        "stale_chip": freshness_chip(entries, as_of),
         "week_movers": _week_movers(entries, data_path, date.fromisoformat(moment[:10])),
         "section_order": list(MACRO_SECTION_ORDER),
         "counts": counts,
@@ -965,10 +992,10 @@ def _add_derived_series(
             data_path, indicators["KRESPY"], entries, by_key, counts, moment,
             "KRE", "SPY", "KRE", as_of, 1.0,
         )
-    if "HYGIEF" in indicators:
+    if "HYGIEI" in indicators:
         _write_price_ratio(
-            data_path, indicators["HYGIEF"], entries, by_key, counts, moment,
-            "HYG", "IEF", "BAMLC0A0CM", as_of, 1.0,
+            data_path, indicators["HYGIEI"], entries, by_key, counts, moment,
+            "HYG", "IEI", "BAMLC0A0CM", as_of, 1.0,
         )
     if "LQDIEF" in indicators:
         _write_price_ratio(
@@ -984,6 +1011,10 @@ def _add_derived_series(
         _write_fetched_series(
             data_path, indicators["JGB10Y"], entries, by_key, counts, moment,
             lambda: fetch_jgb_yield(fetch_start, fetch_end, timeout), MOF_SOURCE,
+        )
+    if "FEDPATH" in indicators and fetch_live:
+        _write_fed_path(
+            data_path, indicators["FEDPATH"], entries, by_key, counts, moment, as_of, timeout,
         )
     if "CFTC" in indicators and fetch_live:
         _write_cftc(data_path, indicators["CFTC"], entries, by_key, counts, moment, timeout)
@@ -1382,6 +1413,235 @@ def _write_fetched_series(
     by_key[indicator.key] = entry
 
 
+def _recount(entries: list[dict]) -> dict[str, int]:
+    counts = {"ok": 0, "preserved": 0, "error": 0}
+    stale = 0
+    for entry in entries:
+        status = entry.get("status")
+        if status == "stale":
+            stale += 1
+        elif status in counts:
+            counts[status] += 1
+    if stale:
+        counts["stale"] = stale
+    return counts
+
+
+def _mark_aged(entries: list[dict], as_of: date, counts: dict[str, int]) -> None:
+    """A fresh download that is older than its frequency cap is stale, not ok."""
+    for entry in entries:
+        if entry.get("status") != "ok":
+            continue
+        cap = entry.get("max_age_days")
+        latest = entry.get("latest_date")
+        if cap is None or not latest:
+            continue
+        try:
+            age = (as_of - date.fromisoformat(str(latest)[:10])).days
+        except ValueError:
+            continue
+        if age > int(cap):
+            entry["status"] = "stale"
+            if not entry.get("last_error"):
+                entry["last_error"] = f"Latest observation is more than {cap} days old."
+    counts.clear()
+    counts.update(_recount(entries))
+
+
+def _replace_entry(entries: list[dict], by_key: dict[str, dict], entry: dict, counts: dict[str, int]) -> None:
+    previous = by_key.get(entry["key"])
+    if previous is not None and previous.get("status") in counts:
+        counts[previous["status"]] = max(0, counts[previous["status"]] - 1)
+    status = entry.get("status") or "ok"
+    counts[status] = counts.get(status, 0) + 1
+    if previous is None:
+        entries.append(entry)
+    else:
+        entries[entries.index(previous)] = entry
+    by_key[entry["key"]] = entry
+
+
+def _use_backup_series(
+    data_path: Path,
+    entries: list[dict],
+    by_key: dict[str, dict],
+    counts: dict[str, int],
+    moment: str,
+    key: str,
+    series: pd.Series,
+    source_name: str,
+    description: str,
+) -> None:
+    current = by_key.get(key)
+    if current is None:
+        return
+    latest = current.get("latest_date")
+    backup_latest = series.dropna().index[-1]
+    fresher = latest is None or backup_latest > pd.Timestamp(latest)
+    stale = current.get("status") in {"preserved", "error", "stale"}
+    if not fresher or not stale:
+        return
+    meta = {**current, "source": source_name, "description": description, "observations": []}
+    document = series_document(
+        {field: meta.get(field) for field in (
+            "key", "name", "source", "unit", "frequency", "change_mode", "description",
+            "transform", "max_age_days", "section", "higher_is_bad", "visible", "group", "file",
+        )},
+        observations_from_series(series),
+        status="ok",
+        fetched_at=moment,
+    )
+    document["visible"] = current.get("visible", True)
+    write_json(data_path / current["file"], document)
+    entry = catalog_entry(document, status="ok", last_attempt_at=moment, last_error=None)
+    _replace_entry(entries, by_key, entry, counts)
+
+
+def _apply_free_backups(
+    data_path: Path,
+    entries: list[dict],
+    counts: dict[str, int],
+    moment: str,
+    as_of: date,
+    fetch_start: date,
+    fetch_end: date,
+    timeout: float,
+) -> None:
+    """When a FRED series is stale, fill it from the public source. A failure leaves the FRED file."""
+    by_key = {entry["key"]: entry for entry in entries}
+    try:
+        claims = fetch_dol_claims(fetch_start, fetch_end, timeout)
+    except Exception as exc:
+        logger.warning("dol_claims_failed error=%s", type(exc).__name__)
+        claims = {}
+    for key, description in (
+        ("ICSA", "Initial claims summed from Department of Labor state reports. Not seasonally adjusted."),
+        ("IC4WSA", "Four-week average of Department of Labor initial claims. Not seasonally adjusted."),
+        ("CCSA", "Continued claims summed from Department of Labor state reports. Not seasonally adjusted."),
+    ):
+        series = claims.get(key)
+        if series is not None and not series.dropna().empty:
+            _use_backup_series(data_path, entries, by_key, counts, moment, key, series, "US Department of Labor", description)
+    for key, bls_id, transform, description in (
+        ("UNRATE", "LNS14000000", "level", "Unemployment rate from the BLS public API."),
+        ("CPIAUCSL", "CUSR0000SA0", "yoy", "CPI-U year-over-year from the BLS public API."),
+    ):
+        try:
+            series = fetch_bls_series(bls_id, fetch_start, fetch_end, timeout)
+            if transform == "yoy":
+                series = cpi_yoy(series)
+            _use_backup_series(data_path, entries, by_key, counts, moment, key, series, "BLS", description)
+        except Exception as exc:
+            logger.warning("bls_backup_failed key=%s error=%s", key, type(exc).__name__)
+    try:
+        _use_backup_series(
+            data_path, entries, by_key, counts, moment, "IORB",
+            iorb_table(fetch_start, fetch_end),
+            "Federal Reserve",
+            "Interest on reserve balances from the FOMC step table, carried forward between meetings.",
+        )
+    except Exception as exc:
+        logger.warning("iorb_table_failed error=%s", type(exc).__name__)
+    try:
+        _use_backup_series(
+            data_path, entries, by_key, counts, moment, "THREEFYTP10",
+            fetch_acm_term_premium(fetch_start, fetch_end, timeout),
+            "New York Fed",
+            "NY Fed ACM 10-year term premium, used when the Kim-Wright FRED series is stale.",
+        )
+    except Exception as exc:
+        logger.warning("acm_backup_failed error=%s", type(exc).__name__)
+    dollar = by_key.get("DTWEXBGS")
+    if dollar is not None and dollar.get("status") in {"preserved", "error", "stale"}:
+        try:
+            yahoo = fetch_yahoo_chart_series("DX-Y.NYB", fetch_start, fetch_end, timeout=timeout, attempts=2)
+            _use_backup_series(
+                data_path, entries, by_key, counts, moment, "DTWEXBGS", yahoo, "Yahoo Finance",
+                "ICE US dollar index (DX-Y.NYB), used because FRED's broad dollar index is stale.",
+            )
+        except Exception as exc:
+            logger.warning("dollar_backup_failed error=%s", type(exc).__name__)
+    del as_of
+
+
+def _zq_symbols(today: date, count: int = 4) -> list[tuple[str, str]]:
+    codes = "FGHJKMNQUVXZ"
+    names = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+    year, month = today.year, today.month
+    symbols = []
+    for _ in range(count):
+        symbols.append((f"ZQ{codes[month - 1]}{str(year)[-2:]}.CBT", f"{names[month - 1]} {year}"))
+        month += 1
+        if month == 13:
+            month = 1
+            year += 1
+    return symbols
+
+
+def _write_fed_path(
+    data_path: Path,
+    grouped_indicator: tuple[str, Indicator],
+    entries: list[dict],
+    by_key: dict[str, dict],
+    counts: dict[str, int],
+    moment: str,
+    as_of: date,
+    timeout: float,
+) -> None:
+    group, indicator = grouped_indicator
+    meta = metadata_for(indicator, group)
+    path = data_path / meta["file"]
+    previous = load_json(path)
+    try:
+        contracts = []
+        for symbol, label in _zq_symbols(as_of, 4):
+            try:
+                series = fetch_yahoo_chart_series(symbol, as_of - timedelta(days=10), as_of, timeout=timeout, attempts=1)
+            except Exception as exc:
+                logger.warning("zq_contract_failed symbol=%s error=%s", symbol, type(exc).__name__)
+                continue
+            price = float(series.dropna().iloc[-1])
+            contracts.append({
+                "symbol": symbol,
+                "label": label,
+                "price": round(price, 4),
+                "implied": round(fed_funds_implied(price), 4),
+                "as_of": series.dropna().index[-1].strftime("%Y-%m-%d"),
+            })
+        if not contracts:
+            raise DataSourceError("No fed funds futures contracts were available.")
+        funds = _scaled_component(data_path, "DFF", "none")
+        effective = None if funds is None or funds.dropna().empty else float(funds.dropna().iloc[-1])
+        for contract in contracts:
+            contract["versus_dff"] = None if effective is None else round(contract["implied"] - effective, 4)
+        observations = [[contract["as_of"], contract["implied"]] for contract in contracts]
+        document = series_document(meta, observations, status="ok", fetched_at=moment)
+        document["display"] = "fedpath"
+        document["contracts"] = contracts
+        document["effective_rate"] = None if effective is None else round(effective, 4)
+        write_json(path, document)
+        entry = catalog_entry(document, status="ok", last_attempt_at=moment, last_error=None)
+        counts["ok"] += 1
+    except Exception as exc:
+        message = _public_error(exc)
+        logger.warning("fed_path_failed error=%s", type(exc).__name__)
+        if previous_is_usable(previous):
+            entry = catalog_entry(
+                _catalog_source_from_previous(meta, previous),
+                status="preserved",
+                last_attempt_at=moment,
+                last_error=message,
+            )
+            counts["preserved"] += 1
+        else:
+            document = series_document(meta, [], status="error", fetched_at=None)
+            write_json(path, document)
+            entry = catalog_entry(document, status="error", last_attempt_at=moment, last_error=message)
+            counts["error"] += 1
+    entries.append(entry)
+    by_key[indicator.key] = entry
+
+
 def _week_movers(entries: list[dict], data_path: Path, as_of: date) -> list[dict]:
     """Largest weekly moves already stored in this snapshot, skipping stale series."""
     items: list[tuple[dict, pd.Series]] = []
@@ -1409,7 +1669,7 @@ def fred_failure_summary(entries: list[dict], fred_keys: list[str]) -> str | Non
     failed: list[str] = []
     for key in fred_keys:
         entry = by_key.get(key)
-        if entry is not None and entry.get("status") == "ok":
+        if entry is not None and entry.get("status") in {"ok", "stale"}:
             continue
         reason = "missing"
         if entry is not None:
@@ -1429,7 +1689,7 @@ def format_report(report: dict) -> str:
     lines = [
         f"Snapshot {report['generated_at']}",
         f"Window {report['history_start']} to {report['history_end']}",
-        f"ok {counts['ok']}  preserved {counts['preserved']}  failed {counts['error']}",
+        f"ok {counts['ok']}  preserved {counts['preserved']}  stale {counts.get('stale', 0)}  failed {counts['error']}",
     ]
     for entry in report["entries"]:
         latest = entry.get("latest_date") or "-"

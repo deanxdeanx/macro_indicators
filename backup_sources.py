@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import date
 from html import unescape
-from io import StringIO
+from io import BytesIO, StringIO
 import re
 
 import pandas as pd
@@ -67,7 +67,30 @@ ECB_AAA_10Y_URL = (
     "https://data-api.ecb.europa.eu/service/data/"
     "YC/B.U2.EUR.4F.G_N_A.SV_C_YM.SR_10Y?format=csvdata"
 )
-JGB_URL = "https://www.mof.go.jp/english/policy/jgbs/reference/interest_rate/historical/jgbcme_all.csv"
+JGB_URLS = (
+    "https://www.mof.go.jp/english/policy/jgbs/reference/interest_rate/jgbcme.csv",
+    "https://www.mof.go.jp/english/policy/jgbs/reference/interest_rate/historical/jgbcme_all.csv",
+)
+JGB_URL = JGB_URLS[1]
+DOL_CLAIMS_URL = "https://oui.doleta.gov/unemploy/csv/ar539.csv"
+BLS_URL = "https://api.bls.gov/publicAPI/v1/timeseries/data/"
+ACM_URL = "https://www.newyorkfed.org/medialibrary/media/research/data_indicators/ACMTermPremium.xls"
+# Interest on reserve balances, forward-filled from FOMC effective dates.
+# Update this table when the Fed changes the administered rate.
+IORB_STEPS = (
+    ("2022-12-15", 4.40),
+    ("2023-02-02", 4.65),
+    ("2023-03-23", 4.90),
+    ("2023-05-04", 5.15),
+    ("2023-07-27", 5.40),
+    ("2024-09-19", 4.90),
+    ("2024-11-08", 4.65),
+    ("2024-12-19", 4.40),
+    ("2025-09-18", 4.15),
+    ("2025-10-30", 3.90),
+    ("2025-12-11", 3.65),
+    ("2026-09-17", 3.90),
+)
 MULTPL_EARNINGS_URL = "https://www.multpl.com/s-p-500-earnings/table/by-month"
 # A quarterly print plus the time it takes to reach the index aggregate.
 EPS_MAX_AGE_DAYS = 120
@@ -623,11 +646,148 @@ def fetch_ecb_aaa_yield(start: date, end: date, timeout: float) -> pd.Series:
 
 
 def fetch_jgb_yield(start: date, end: date, timeout: float) -> pd.Series:
-    response = requests.get(JGB_URL, headers=TREASURY_HEADERS, timeout=(10, max(timeout, 30)))
-    response.raise_for_status()
-    series = _window(parse_jgb_csv(response.text), start, end)
+    """Current-month file plus the historical file. The historical file lags the month in progress."""
+    parts: list[pd.Series] = []
+    errors: list[str] = []
+    for url in JGB_URLS:
+        try:
+            response = requests.get(url, headers=TREASURY_HEADERS, timeout=(10, max(timeout, 30)))
+            response.raise_for_status()
+            parts.append(parse_jgb_csv(response.text))
+        except Exception as exc:
+            errors.append(type(exc).__name__)
+    if not parts:
+        raise ValueError(f"Japan MOF returned no 10-year yield ({', '.join(errors) or 'no files'}).")
+    series = pd.concat(parts).sort_index()
+    series = series[~series.index.duplicated(keep="last")]
+    series = _window(series, start, end)
+    series.name = "JGB10Y"
     if series.empty:
         raise ValueError("Japan MOF returned no 10-year yield in the requested window.")
+    return series
+
+
+def parse_dol_national_claims(text: str) -> dict[str, pd.Series]:
+    """National initial and continued claims from the state-level ETA 539 file.
+
+    Column c3 is initial claims and c8 is continued weeks claimed. The national
+    figure is the sum across states and territories. It is not seasonally adjusted.
+    """
+    frame = pd.read_csv(StringIO(text))
+    if "rptdate" not in frame.columns or "c3" not in frame.columns or "c8" not in frame.columns:
+        raise ValueError("DOL claims file is missing rptdate, c3, or c8.")
+    frame["rptdate"] = pd.to_datetime(frame["rptdate"], errors="coerce")
+    frame["c3"] = pd.to_numeric(frame["c3"], errors="coerce")
+    frame["c8"] = pd.to_numeric(frame["c8"], errors="coerce")
+    grouped = frame.dropna(subset=["rptdate"]).groupby("rptdate")[["c3", "c8"]].sum().sort_index()
+    if grouped.empty:
+        raise ValueError("DOL claims file had no weekly totals.")
+    initial = grouped["c3"].astype(float)
+    initial.name = "ICSA"
+    continued = grouped["c8"].astype(float)
+    continued.name = "CCSA"
+    average = initial.rolling(4).mean().dropna()
+    average.name = "IC4WSA"
+    return {"ICSA": initial, "CCSA": continued, "IC4WSA": average}
+
+
+def parse_bls_monthly(payload: dict, series_id: str) -> pd.Series:
+    """Monthly BLS observations. M13 annual averages are left out. Dates are the first of the month."""
+    rows = None
+    if isinstance(payload, dict):
+        results = payload.get("Results") or {}
+        series = results.get("series") or []
+        if series and isinstance(series[0], dict):
+            rows = series[0].get("data")
+    if not isinstance(rows, list) or not rows:
+        raise ValueError(f"BLS returned no observations for {series_id}.")
+    dates: list[str] = []
+    values: list[float] = []
+    for row in rows:
+        period = str(row.get("period") or "")
+        if not period.startswith("M") or period == "M13":
+            continue
+        try:
+            month = int(period[1:])
+            value = float(row["value"])
+            year = int(row["year"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        dates.append(f"{year:04d}-{month:02d}-01")
+        values.append(value)
+    series = _series(values, dates, series_id)
+    if series.empty:
+        raise ValueError(f"BLS returned no monthly observations for {series_id}.")
+    return series
+
+
+def cpi_yoy(index: pd.Series) -> pd.Series:
+    """Year-over-year percent change of a monthly CPI index."""
+    change = index.dropna().sort_index().pct_change(12, fill_method=None).mul(100).dropna()
+    change.name = "CPIAUCSL"
+    return change
+
+
+def parse_acm_term_premium(frame: pd.DataFrame) -> pd.Series:
+    """NY Fed ACM 10-year term premium, ACMTP10, in percent."""
+    if "DATE" not in frame.columns or "ACMTP10" not in frame.columns:
+        raise ValueError("ACM sheet is missing DATE or ACMTP10.")
+    dates = pd.to_datetime(frame["DATE"], errors="coerce")
+    values = pd.to_numeric(frame["ACMTP10"], errors="coerce")
+    series = pd.Series(values.to_numpy(), index=dates, name="THREEFYTP10").dropna()
+    series = series[~series.index.duplicated(keep="last")].sort_index()
+    if series.empty:
+        raise ValueError("ACM sheet had no 10-year term premium.")
+    return series
+
+
+def iorb_table(start: date, end: date) -> pd.Series:
+    """Daily IORB from the FOMC step table, carried forward between meetings."""
+    steps = pd.Series(
+        [rate for _, rate in IORB_STEPS],
+        index=pd.to_datetime([day for day, _ in IORB_STEPS]),
+        name="IORB",
+    ).sort_index()
+    calendar = pd.bdate_range(start, end)
+    carried = steps.reindex(calendar, method="ffill").dropna()
+    if carried.empty:
+        raise ValueError("The IORB table does not cover the requested window.")
+    return carried
+
+
+def fed_funds_implied(price: float) -> float:
+    """Fed funds futures are quoted as 100 minus the expected rate."""
+    return 100.0 - float(price)
+
+
+def fetch_dol_claims(start: date, end: date, timeout: float) -> dict[str, pd.Series]:
+    response = requests.get(DOL_CLAIMS_URL, headers=TREASURY_HEADERS, timeout=(10, max(timeout, 30)))
+    response.raise_for_status()
+    parsed = parse_dol_national_claims(response.text)
+    return {key: _window(series, start, end) for key, series in parsed.items()}
+
+
+def fetch_bls_series(series_id: str, start: date, end: date, timeout: float) -> pd.Series:
+    response = requests.post(
+        BLS_URL,
+        json={"seriesid": [series_id], "startyear": str(start.year), "endyear": str(end.year)},
+        headers=JSON_HEADERS,
+        timeout=(10, timeout),
+    )
+    response.raise_for_status()
+    series = _window(parse_bls_monthly(response.json(), series_id), start, end)
+    if series.empty:
+        raise ValueError(f"BLS returned no observations for {series_id} in the requested window.")
+    return series
+
+
+def fetch_acm_term_premium(start: date, end: date, timeout: float) -> pd.Series:
+    response = requests.get(ACM_URL, headers=TREASURY_HEADERS, timeout=(10, max(timeout, 60)))
+    response.raise_for_status()
+    frame = pd.read_excel(BytesIO(response.content), sheet_name="ACM Daily")
+    series = _window(parse_acm_term_premium(frame), start, end)
+    if series.empty:
+        raise ValueError("NY Fed ACM file had no term premium in the requested window.")
     return series
 
 
