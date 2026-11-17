@@ -7,7 +7,7 @@
   "change_mode": "percent",
   "description": "CFTC leveraged-money net (long minus short) for 10-year notes, E-mini S&P 500, and the dollar index.",
   "transform": "none",
-  "max_age_days": null,
+  "max_age_days": 12,
   "section": "Cross-asset",
   "higher_is_bad": false,
   "visible": true,
@@ -16,7 +16,7 @@
   "status": "ok",
   "observation_count": 200,
   "latest_date": "2026-11-10",
-  "fetched_at": "2026-11-16T22:54:15Z",
+  "fetched_at": "2026-11-17T21:47:05Z",
   "observations": [
     [
       "2023-01-17",

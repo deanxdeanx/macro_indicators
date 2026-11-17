@@ -7,7 +7,7 @@
   "change_mode": "points",
   "description": "Fed funds futures (ZQ) implied rate minus the effective federal funds rate. A positive number is hikes priced in.",
   "transform": "none",
-  "max_age_days": null,
+  "max_age_days": 5,
   "section": "Rates and the curve",
   "higher_is_bad": false,
   "visible": true,
@@ -16,15 +16,15 @@
   "status": "ok",
   "observation_count": 4,
   "latest_date": "2026-11-17",
-  "fetched_at": "2026-11-17T02:41:53Z",
+  "fetched_at": "2026-11-17T21:47:05Z",
   "observations": [
     [
       "2026-11-17",
-      3.88
+      3.8825
     ],
     [
       "2026-11-17",
-      4.06
+      4.07
     ],
     [
       "2026-11-17",
@@ -40,18 +40,18 @@
     {
       "symbol": "ZQX26.CBT",
       "label": "Nov 2026",
-      "price": 96.12,
-      "implied": 3.88,
+      "price": 96.1175,
+      "implied": 3.8825,
       "as_of": "2026-11-17",
-      "versus_dff": 0.0
+      "versus_dff": 0.0025
     },
     {
       "symbol": "ZQZ26.CBT",
       "label": "Dec 2026",
-      "price": 95.94,
-      "implied": 4.06,
+      "price": 95.93,
+      "implied": 4.07,
       "as_of": "2026-11-17",
-      "versus_dff": 0.18
+      "versus_dff": 0.19
     },
     {
       "symbol": "ZQF27.CBT",

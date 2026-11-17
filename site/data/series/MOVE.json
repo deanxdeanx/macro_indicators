@@ -7,16 +7,16 @@
   "change_mode": "percent",
   "description": "",
   "transform": "none",
-  "max_age_days": null,
+  "max_age_days": 5,
   "section": "Cross-asset",
   "higher_is_bad": true,
   "visible": true,
   "group": "markets",
   "file": "series/MOVE.json",
   "status": "ok",
-  "observation_count": 1715,
-  "latest_date": "2026-11-16",
-  "fetched_at": "2026-11-16T22:54:15Z",
+  "observation_count": 1716,
+  "latest_date": "2026-11-17",
+  "fetched_at": "2026-11-17T21:47:05Z",
   "observations": [
     [
       "2020-01-02",
@@ -6876,7 +6876,11 @@
     ],
     [
       "2026-11-16",
-      101.282402
+      101.279999
+    ],
+    [
+      "2026-11-17",
+      101.877403
     ]
   ]
 }

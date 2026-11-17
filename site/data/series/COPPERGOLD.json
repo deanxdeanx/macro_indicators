@@ -7,16 +7,16 @@
   "change_mode": "percent",
   "description": "COMEX copper futures divided by gold futures, times 1,000.",
   "transform": "none",
-  "max_age_days": null,
+  "max_age_days": 5,
   "section": "Rates and the curve",
   "higher_is_bad": false,
   "visible": true,
   "group": "macro",
   "file": "series/COPPERGOLD.json",
   "status": "ok",
-  "observation_count": 1731,
-  "latest_date": "2026-11-16",
-  "fetched_at": "2026-11-16T22:54:15Z",
+  "observation_count": 1732,
+  "latest_date": "2026-11-17",
+  "fetched_at": "2026-11-17T21:47:05Z",
   "observations": [
     [
       "2020-01-02",
@@ -6940,7 +6940,11 @@
     ],
     [
       "2026-11-16",
-      1.551049
+      1.556579
+    ],
+    [
+      "2026-11-17",
+      1.555527
     ]
   ]
 }

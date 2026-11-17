@@ -1,22 +1,22 @@
 {
   "key": "CPIAUCSL",
   "name": "US Inflation (CPI, YoY)",
-  "source": "FRED",
+  "source": "BLS",
   "unit": "%",
   "frequency": "Monthly",
   "change_mode": "points",
-  "description": "",
+  "description": "CPI-U year-over-year from the BLS public API.",
   "transform": "yoy",
-  "max_age_days": null,
+  "max_age_days": 45,
   "section": "Growth and labor",
   "higher_is_bad": true,
   "visible": true,
   "group": "macro",
   "file": "series/CPIAUCSL.json",
   "status": "ok",
-  "observation_count": 68,
-  "latest_date": "2026-09-01",
-  "fetched_at": "2026-11-10T07:15:34Z",
+  "observation_count": 69,
+  "latest_date": "2026-10-01",
+  "fetched_at": "2026-11-17T21:47:05Z",
   "observations": [
     [
       "2021-01-01",
@@ -289,6 +289,10 @@
     [
       "2026-09-01",
       4.02331
+    ],
+    [
+      "2026-10-01",
+      4.080556
     ]
   ]
 }

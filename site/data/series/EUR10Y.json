@@ -7,16 +7,16 @@
   "change_mode": "points",
   "description": "ECB AAA sovereign 10-year spot rate. Yahoo does not publish a Bund yield; this is the free daily euro benchmark.",
   "transform": "none",
-  "max_age_days": null,
+  "max_age_days": 5,
   "section": "Global",
   "higher_is_bad": true,
   "visible": true,
   "group": "macro",
   "file": "series/EUR10Y.json",
   "status": "ok",
-  "observation_count": 1757,
-  "latest_date": "2026-11-13",
-  "fetched_at": "2026-11-16T22:54:15Z",
+  "observation_count": 1758,
+  "latest_date": "2026-11-16",
+  "fetched_at": "2026-11-17T21:47:05Z",
   "observations": [
     [
       "2020-01-02",
@@ -7045,6 +7045,10 @@
     [
       "2026-11-13",
       3.411591
+    ],
+    [
+      "2026-11-16",
+      3.422406
     ]
   ]
 }

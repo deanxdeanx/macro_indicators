@@ -10,18 +10,18 @@
   "group": "semis",
   "file": "semis/TSM.json",
   "visible": true,
-  "market_cap": 1936900319785.32,
+  "market_cap": 1865533961654.06,
   "shares": 25932524521.0,
   "ordinary_per_share": 5,
   "eps_concept": "DilutedEarningsLossPerShare",
   "eps_unit": "USD/shares",
   "eps_basis": "annual diluted EPS carried forward; this filer does not report a quarterly EPS series",
   "description": "annual diluted EPS carried forward; this filer does not report a quarterly EPS series One US share is 5 ordinary shares; EPS and the share count use that ratio.",
-  "price": 373.45,
-  "pe": 54.9191,
+  "price": 359.69,
+  "pe": 52.8956,
   "median_pe": 24.6826,
   "pe_percentile": 92.5,
-  "latest_date": "2026-11-16",
+  "latest_date": "2026-11-17",
   "observations": [
     [
       "2016-11-30",
@@ -504,8 +504,8 @@
       406.13
     ],
     [
-      "2026-11-16",
-      373.45
+      "2026-11-17",
+      359.69
     ]
   ],
   "pe_observations": [
@@ -934,11 +934,11 @@
       59.725
     ],
     [
-      "2026-11-16",
-      54.9191
+      "2026-11-17",
+      52.8956
     ]
   ],
   "observation_count": 121,
   "status": "ok",
-  "fetched_at": "2026-11-16T22:54:15Z"
+  "fetched_at": "2026-11-17T21:47:05Z"
 }

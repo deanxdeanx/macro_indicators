@@ -7,16 +7,16 @@
   "change_mode": "points",
   "description": "DGS2 minus the daily effective federal funds rate.",
   "transform": "none",
-  "max_age_days": null,
+  "max_age_days": 5,
   "section": "Rates and the curve",
   "higher_is_bad": false,
   "visible": true,
   "group": "macro",
   "file": "series/DGS2DFF.json",
   "status": "ok",
-  "observation_count": 1718,
-  "latest_date": "2026-11-13",
-  "fetched_at": "2026-11-16T22:54:15Z",
+  "observation_count": 1719,
+  "latest_date": "2026-11-16",
+  "fetched_at": "2026-11-17T21:47:05Z",
   "observations": [
     [
       "2020-01-02",
@@ -6889,6 +6889,10 @@
     [
       "2026-11-13",
       1.0
+    ],
+    [
+      "2026-11-16",
+      0.95
     ]
   ]
 }

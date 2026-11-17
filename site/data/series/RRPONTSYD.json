@@ -7,16 +7,16 @@
   "change_mode": "percent",
   "description": "Treasury securities sold by the Fed in overnight reverse repo. Shown on the net liquidity card.",
   "transform": "none",
-  "max_age_days": null,
+  "max_age_days": 5,
   "section": "Liquidity",
   "higher_is_bad": false,
   "visible": false,
   "group": "macro",
   "file": "series/RRPONTSYD.json",
   "status": "ok",
-  "observation_count": 1716,
-  "latest_date": "2026-11-16",
-  "fetched_at": "2026-11-16T22:54:15Z",
+  "observation_count": 1717,
+  "latest_date": "2026-11-17",
+  "fetched_at": "2026-11-17T21:47:05Z",
   "observations": [
     [
       "2020-01-02",
@@ -2900,7 +2900,7 @@
     ],
     [
       "2022-11-17",
-      2106.2415
+      2114.345
     ],
     [
       "2022-11-18",
@@ -4368,7 +4368,7 @@
     ],
     [
       "2024-05-08",
-      466.9375
+      493.311
     ],
     [
       "2024-05-09",
@@ -6372,7 +6372,7 @@
     ],
     [
       "2026-05-13",
-      0.11
+      3.609
     ],
     [
       "2026-05-14",
@@ -6881,6 +6881,10 @@
     [
       "2026-11-16",
       0.182
+    ],
+    [
+      "2026-11-17",
+      0.351
     ]
   ]
 }

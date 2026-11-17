@@ -1,7 +1,7 @@
 {
   "key": "JGB10Y",
   "name": "10-Year JGB",
-  "source": "Computed",
+  "source": "Japan MOF",
   "unit": "%",
   "frequency": "Daily",
   "change_mode": "points",
@@ -16,7 +16,7 @@
   "status": "ok",
   "observation_count": 1677,
   "latest_date": "2026-11-16",
-  "fetched_at": "2026-11-17T02:39:45Z",
+  "fetched_at": "2026-11-17T21:47:05Z",
   "observations": [
     [
       "2020-01-06",

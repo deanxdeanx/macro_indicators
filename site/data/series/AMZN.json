@@ -7,16 +7,16 @@
   "change_mode": "percent",
   "description": "",
   "transform": "none",
-  "max_age_days": null,
+  "max_age_days": 5,
   "section": "Companies",
   "higher_is_bad": false,
   "visible": true,
   "group": "companies",
   "file": "series/AMZN.json",
   "status": "ok",
-  "observation_count": 1728,
-  "latest_date": "2026-11-16",
-  "fetched_at": "2026-11-16T22:54:15Z",
+  "observation_count": 1729,
+  "latest_date": "2026-11-17",
+  "fetched_at": "2026-11-17T21:47:05Z",
   "observations": [
     [
       "2020-01-02",
@@ -6929,6 +6929,10 @@
     [
       "2026-11-16",
       257.75
+    ],
+    [
+      "2026-11-17",
+      257.890015
     ]
   ]
 }

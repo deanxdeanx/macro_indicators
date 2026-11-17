@@ -7,16 +7,16 @@
   "change_mode": "points",
   "description": "Daily effective federal funds rate.",
   "transform": "none",
-  "max_age_days": null,
+  "max_age_days": 5,
   "section": "Rates and the curve",
   "higher_is_bad": true,
   "visible": true,
   "group": "macro",
   "file": "series/DFF.json",
   "status": "ok",
-  "observation_count": 1725,
-  "latest_date": "2026-11-13",
-  "fetched_at": "2026-11-16T22:54:15Z",
+  "observation_count": 1726,
+  "latest_date": "2026-11-16",
+  "fetched_at": "2026-11-17T21:47:05Z",
   "observations": [
     [
       "2020-01-02",
@@ -6916,6 +6916,10 @@
     ],
     [
       "2026-11-13",
+      3.88
+    ],
+    [
+      "2026-11-16",
       3.88
     ]
   ]

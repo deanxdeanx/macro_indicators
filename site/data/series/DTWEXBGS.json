@@ -5,18 +5,18 @@
   "unit": "index",
   "frequency": "Daily",
   "change_mode": "percent",
-  "description": "ICE US dollar index (DX-Y.NYB), used because it is newer than FRED's broad dollar index.",
+  "description": "ICE US dollar index (DX-Y.NYB), used because FRED's broad dollar index is stale.",
   "transform": "none",
-  "max_age_days": 14,
+  "max_age_days": 5,
   "section": "Dollar",
   "higher_is_bad": true,
   "visible": true,
   "group": "macro",
   "file": "series/DTWEXBGS.json",
   "status": "ok",
-  "observation_count": 1728,
-  "latest_date": "2026-11-12",
-  "fetched_at": "2026-11-12T20:50:28Z",
+  "observation_count": 1731,
+  "latest_date": "2026-11-17",
+  "fetched_at": "2026-11-17T21:47:05Z",
   "observations": [
     [
       "2020-01-02",
@@ -6928,7 +6928,19 @@
     ],
     [
       "2026-11-12",
-      103.18
+      103.169998
+    ],
+    [
+      "2026-11-13",
+      103.410004
+    ],
+    [
+      "2026-11-16",
+      103.550003
+    ],
+    [
+      "2026-11-17",
+      103.552002
     ]
   ]
 }

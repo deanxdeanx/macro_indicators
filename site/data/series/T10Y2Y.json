@@ -7,16 +7,16 @@
   "change_mode": "points",
   "description": "Negative values indicate an inverted yield curve.",
   "transform": "none",
-  "max_age_days": null,
+  "max_age_days": 5,
   "section": "Rates and the curve",
   "higher_is_bad": false,
   "visible": true,
   "group": "macro",
   "file": "series/T10Y2Y.json",
   "status": "ok",
-  "observation_count": 1719,
-  "latest_date": "2026-11-16",
-  "fetched_at": "2026-11-16T22:54:15Z",
+  "observation_count": 1720,
+  "latest_date": "2026-11-17",
+  "fetched_at": "2026-11-17T21:47:05Z",
   "observations": [
     [
       "2020-01-02",
@@ -6893,6 +6893,10 @@
     [
       "2026-11-16",
       0.29
+    ],
+    [
+      "2026-11-17",
+      0.3
     ]
   ]
 }

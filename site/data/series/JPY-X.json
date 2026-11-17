@@ -7,16 +7,16 @@
   "change_mode": "percent",
   "description": "Yen per dollar. A rise is a stronger dollar.",
   "transform": "none",
-  "max_age_days": null,
+  "max_age_days": 5,
   "section": "Global",
   "higher_is_bad": true,
   "visible": true,
   "group": "macro",
   "file": "series/JPY-X.json",
   "status": "ok",
-  "observation_count": 1789,
-  "latest_date": "2026-11-16",
-  "fetched_at": "2026-11-16T22:54:15Z",
+  "observation_count": 1790,
+  "latest_date": "2026-11-17",
+  "fetched_at": "2026-11-17T21:47:05Z",
   "observations": [
     [
       "2020-01-01",
@@ -7172,7 +7172,11 @@
     ],
     [
       "2026-11-16",
-      159.403
+      159.779999
+    ],
+    [
+      "2026-11-17",
+      159.371002
     ]
   ]
 }
