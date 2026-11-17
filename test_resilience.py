@@ -8,6 +8,11 @@ import unittest
 import pandas as pd
 
 from backup_sources import (
+    cpi_yoy,
+    fed_funds_implied,
+    parse_bls_monthly,
+    parse_dol_national_claims,
+    parse_jgb_csv,
     cftc_history,
     choose_eps,
     daily_earnings_yield,
@@ -16,7 +21,6 @@ from backup_sources import (
     parse_dts_tga,
     parse_ecb_csv,
     parse_h41_preview,
-    parse_jgb_csv,
     parse_multpl_earnings,
     parse_multpl_earnings_yield,
     parse_nyfed_rates,
@@ -33,6 +37,7 @@ from data_sources import (
     MARKET_INDICATORS,
     company_indicators,
     regime_inputs_stale,
+    freshness_chip,
     regime_readout,
     regime_words,
     release_is_stale,
@@ -123,7 +128,7 @@ class CrossAssetTests(unittest.TestCase):
         self.assertEqual(sections["SPEARN10"], "Real rates and credit")
         self.assertEqual(sections["DGS3MO"], "Rates and the curve")
         growth = [item.key for item in MACRO_INDICATORS if item.section == "Growth and labor"]
-        self.assertEqual(growth, ["UNRATE", "CPIAUCSL", "A191RL1Q225SBEA", "ICSA", "IC4WSA", "UMCSENT"])
+        self.assertEqual(growth, ["UNRATE", "CPIAUCSL", "A191RL1Q225SBEA", "ICSA", "IC4WSA", "CCSA", "UMCSENT"])
 
     def test_multpl_skips_estimate_rows(self) -> None:
         html = """
@@ -157,18 +162,18 @@ class RegimeWordTests(unittest.TestCase):
         entries = [
             {"key": "BAMLH0A0HYM2", "status": "preserved", "latest_date": "2026-11-06", "frequency": "Daily", "week_change": 0.2},
             {"key": "BAMLC0A0CM", "status": "preserved", "latest_date": "2026-11-06", "frequency": "Daily", "week_change": 0.2},
-            {"key": "HYGIEF", "status": "ok", "latest_date": "2026-11-12", "frequency": "Daily", "week_change": -0.8},
+            {"key": "HYGIEI", "status": "ok", "latest_date": "2026-11-12", "frequency": "Daily", "week_change": -0.8},
             {"key": "LQDIEF", "status": "ok", "latest_date": "2026-11-12", "frequency": "Daily", "week_change": 0.9},
         ]
         text = regime_readout(entries, as_of=date(2026, 11, 13))
-        self.assertIn("credit widening via HYG/IEF", text)
+        self.assertIn("credit widening via HYG/IEI", text)
         self.assertNotIn("(12 Nov)", text)
         self.assertNotIn("(6 Nov)", text)
 
     def test_lqd_ief_is_used_when_hyg_is_also_stale(self) -> None:
         entries = [
             {"key": "BAMLH0A0HYM2", "status": "preserved", "latest_date": "2026-11-06", "frequency": "Daily", "week_change": 0.2},
-            {"key": "HYGIEF", "status": "preserved", "latest_date": "2026-11-01", "frequency": "Daily", "week_change": -1.0},
+            {"key": "HYGIEI", "status": "preserved", "latest_date": "2026-11-01", "frequency": "Daily", "week_change": -1.0},
             {"key": "LQDIEF", "status": "ok", "latest_date": "2026-11-12", "frequency": "Daily", "week_change": 0.8},
         ]
         text = regime_readout(entries, as_of=date(2026, 11, 13))
@@ -195,6 +200,92 @@ class RegimeWordTests(unittest.TestCase):
         )
         self.assertEqual(entry["eps_date"], "2026-06-30")
         self.assertEqual(entry["eps_kind"], "trailing")
+
+
+class FreshnessAndBackupTests(unittest.TestCase):
+    def test_an_old_ok_series_is_marked_stale(self) -> None:
+        from build_data import _mark_aged
+
+        entries = [{
+            "key": "DGS2",
+            "status": "ok",
+            "latest_date": "2026-11-01",
+            "max_age_days": 5,
+            "last_error": None,
+        }]
+        counts = {"ok": 1}
+        _mark_aged(entries, date(2026, 11, 13), counts)
+        self.assertEqual(entries[0]["status"], "stale")
+        self.assertEqual(counts["stale"], 1)
+        self.assertEqual(counts["ok"], 0)
+        self.assertEqual(
+            freshness_chip([
+                {"latest_date": "2026-11-01", "max_age_days": 5, "status": "preserved"},
+                {"latest_date": "2026-11-12", "max_age_days": 5, "status": "ok"},
+            ], date(2026, 11, 13)),
+            "1 series past their freshness window",
+        )
+
+    def test_dol_sums_initial_and_continued_claims(self) -> None:
+        text = "\n".join([
+            "st,rptdate,c1,c2,c3,c4,c5,c6,c7,c8",
+            "AA,2026-11-07,1,1,100,0,0,0,0,1000",
+            "BB,2026-11-07,1,1,50,0,0,0,0,400",
+            "AA,2026-10-31,1,1,80,0,0,0,0,900",
+            "BB,2026-10-31,1,1,40,0,0,0,0,300",
+            "AA,2026-10-24,1,1,70,0,0,0,0,800",
+            "BB,2026-10-24,1,1,30,0,0,0,0,200",
+            "AA,2026-10-17,1,1,60,0,0,0,0,700",
+            "BB,2026-10-17,1,1,20,0,0,0,0,100",
+        ])
+        parsed = parse_dol_national_claims(text)
+        self.assertEqual(float(parsed["ICSA"].loc["2026-11-07"]), 150)
+        self.assertEqual(float(parsed["CCSA"].loc["2026-11-07"]), 1400)
+        self.assertAlmostEqual(float(parsed["IC4WSA"].loc["2026-11-07"]), (150 + 120 + 100 + 80) / 4)
+
+    def test_bls_skips_the_annual_average(self) -> None:
+        payload = {"Results": {"series": [{"data": [
+            {"year": "2026", "period": "M10", "value": "4.1"},
+            {"year": "2026", "period": "M13", "value": "4.0"},
+        ]}]}}
+        series = parse_bls_monthly(payload, "LNS14000000")
+        self.assertEqual(list(series.index.strftime("%Y-%m-%d")), ["2026-10-01"])
+        self.assertAlmostEqual(float(series.iloc[-1]), 4.1)
+
+    def test_cpi_year_over_year(self) -> None:
+        index = pd.Series(
+            [100, 110],
+            index=pd.to_datetime(["2025-10-01", "2026-10-01"]),
+        )
+        # twelve periods, so build a monthly index
+        months = pd.date_range("2025-01-01", periods=14, freq="MS")
+        index = pd.Series([100 + i for i in range(14)], index=months)
+        change = cpi_yoy(index)
+        self.assertAlmostEqual(float(change.iloc[-1]), (113 / 101 - 1) * 100, places=4)
+
+    def test_fed_funds_futures_are_100_minus_the_rate(self) -> None:
+        self.assertAlmostEqual(fed_funds_implied(95.94), 4.06)
+
+    def test_rates_shock_and_stress_words(self) -> None:
+        entries = [
+            {"key": "DGS2", "status": "ok", "latest_date": "2026-11-12", "frequency": "Daily", "week_change": 0.20, "max_age_days": 5},
+            {"key": "DFII10", "status": "ok", "latest_date": "2026-11-12", "frequency": "Daily", "week_change": 0.02, "range_percentile": 50},
+            {"key": "^VIX", "status": "ok", "latest_date": "2026-11-12", "frequency": "Daily", "week_change": 12},
+            {"key": "^MOVE", "status": "ok", "latest_date": "2026-11-12", "frequency": "Daily", "week_change": 1},
+            {"key": "KRESPY", "status": "ok", "latest_date": "2026-11-12", "frequency": "Daily", "week_change": -2.0},
+            {"key": "IWM", "status": "ok", "latest_date": "2026-11-12", "frequency": "Daily", "week_change": -0.2},
+        ]
+        text = regime_readout(entries, as_of=date(2026, 11, 13))
+        self.assertIn("rates shock higher", text)
+        self.assertIn("stress rising", text)
+
+    def test_jgb_merge_keeps_the_newer_current_month_print(self) -> None:
+        history = parse_jgb_csv("Date,1Y,2Y,3Y,4Y,5Y,6Y,7Y,8Y,9Y,10Y\n2026/10/30,1,1,1,1,1,1,1,1,1,2.70\n")
+        current = parse_jgb_csv("Interest Rate\nDate,1Y,2Y,3Y,4Y,5Y,6Y,7Y,8Y,9Y,10Y\n2026/11/13,1,1,1,1,1,1,1,1,1,2.90\n")
+        merged = pd.concat([history, current]).sort_index()
+        merged = merged[~merged.index.duplicated(keep="last")]
+        self.assertEqual(merged.index[-1].strftime("%Y-%m-%d"), "2026-11-13")
+        self.assertAlmostEqual(float(merged.iloc[-1]), 2.90)
 
 
 class DirectLiquidityTests(unittest.TestCase):

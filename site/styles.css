@@ -333,7 +333,7 @@ input[type="date"]:focus-visible,
   width: 100%;
   min-width: 40rem;
   border-collapse: collapse;
-  font-size: 0.82rem;
+  font-size: 0.92rem;
 }
 
 .overview th,
@@ -557,7 +557,7 @@ input[type="date"]:focus-visible,
 .semi-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.82rem;
+  font-size: 0.92rem;
 }
 .semi-table th,
 .semi-table td {

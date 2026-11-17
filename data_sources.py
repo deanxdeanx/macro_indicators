@@ -116,6 +116,17 @@ MACRO_INDICATORS = (
         higher_is_bad=True,
     ),
     Indicator(
+        "CCSA",
+        "Continued Claims",
+        "FRED",
+        "claims",
+        "Weekly",
+        change_mode="count",
+        description="Continued weeks claimed. Filled from the Department of Labor state sum when FRED is stale. That backup is not seasonally adjusted.",
+        section="Growth and labor",
+        higher_is_bad=True,
+    ),
+    Indicator(
         "UMCSENT",
         "Consumer Sentiment",
         "FRED",
@@ -203,9 +214,19 @@ MACRO_INDICATORS = (
         "%",
         "Daily",
         change_mode="points",
-        description="Kim-Wright term premium on the 10-year Treasury. ACM is not published on FRED.",
+        description="Kim-Wright term premium on the 10-year Treasury. When this print is stale, the tile uses the NY Fed ACM 10-year term premium.",
         section="Rates and the curve",
         higher_is_bad=True,
+    ),
+    Indicator(
+        "FEDPATH",
+        "Fed funds path",
+        "Computed",
+        "%",
+        "Daily",
+        change_mode="points",
+        description="Fed funds futures (ZQ) implied rate minus the effective federal funds rate. A positive number is hikes priced in.",
+        section="Rates and the curve",
     ),
     Indicator(
         "DGS2DFF",
@@ -277,7 +298,7 @@ MACRO_INDICATORS = (
         "Yahoo Finance",
         "$",
         "Daily",
-        description="iShares iBoxx High Yield Corporate Bond ETF. Used with IEF to track credit when FRED spreads are stale.",
+        description="iShares iBoxx High Yield Corporate Bond ETF. Compared with IEI, whose duration is about four years.",
         section="Real rates and credit",
         visible=False,
     ),
@@ -287,7 +308,7 @@ MACRO_INDICATORS = (
         "Yahoo Finance",
         "$",
         "Daily",
-        description="iShares iBoxx Investment Grade Corporate Bond ETF. Used with IEF to track credit when FRED spreads are stale.",
+        description="iShares iBoxx Investment Grade Corporate Bond ETF. Compared with IEF, the closest liquid Treasury ETF to its roughly eight-year duration.",
         section="Real rates and credit",
         visible=False,
     ),
@@ -297,17 +318,27 @@ MACRO_INDICATORS = (
         "Yahoo Finance",
         "$",
         "Daily",
-        description="iShares 7-10 Year Treasury Bond ETF. The denominator for the HYG and LQD credit ratios.",
+        description="iShares 7-10 Year Treasury Bond ETF. Duration is about 7.5 years, the closest single Treasury ETF to LQD's roughly 8 years.",
         section="Real rates and credit",
         visible=False,
     ),
     Indicator(
-        "HYGIEF",
-        "HYG / IEF",
+        "IEI",
+        "3-7 Year Treasury ETF",
+        "Yahoo Finance",
+        "$",
+        "Daily",
+        description="iShares 3-7 Year Treasury Bond ETF. Duration is about 4.3 years, close to HYG's roughly 3.5 to 4 years.",
+        section="Real rates and credit",
+        visible=False,
+    ),
+    Indicator(
+        "HYGIEI",
+        "HYG / IEI",
         "Computed",
         "ratio",
         "Daily",
-        description="High-yield bond ETF divided by the 7–10 year Treasury ETF. A fall means high yield is lagging Treasuries. This drives the regime credit word when the FRED high-yield spread is stale.",
+        description="High-yield bonds divided by a duration-matched Treasury ETF (IEI, about 4 years). A fall means high yield is lagging Treasuries after the rates move is hedged. This drives the regime credit word when the FRED high-yield spread is stale.",
         section="Real rates and credit",
     ),
     Indicator(
@@ -316,7 +347,7 @@ MACRO_INDICATORS = (
         "Computed",
         "ratio",
         "Daily",
-        description="Investment-grade bond ETF divided by the 7–10 year Treasury ETF. A fall means investment-grade credit is lagging Treasuries.",
+        description="Investment-grade bonds divided by IEF. IEF duration is about 7.5 years versus LQD at about 8.2, the closest liquid Treasury ETF. A fall means investment-grade credit is lagging Treasuries.",
         section="Real rates and credit",
     ),
     Indicator(
@@ -1173,6 +1204,26 @@ def as_of_label(dates: dict[str, str | None]) -> str:
     return f"FRED as of {fred} · Yahoo as of {_long_date(dates.get('yahoo_as_of'))}"
 
 
+def freshness_chip(entries: list[dict], as_of: date | None = None) -> str | None:
+    """Count series whose latest print is older than the frequency cap."""
+    current = as_of or date.today()
+    aged = 0
+    for entry in entries:
+        latest = entry.get("latest_date")
+        cap = entry.get("max_age_days")
+        if not latest or cap is None:
+            continue
+        try:
+            age = (current - date.fromisoformat(str(latest)[:10])).days
+        except ValueError:
+            continue
+        if age > int(cap):
+            aged += 1
+    if not aged:
+        return None
+    return f"{aged} series past their freshness window"
+
+
 def fred_refresh_chip(entries: list[dict]) -> str | None:
     """Short label when FRED series were held over. Majority failures use the stronger wording."""
     fred = [entry for entry in entries if entry.get("source") == "FRED"]
@@ -1190,7 +1241,7 @@ def component_is_stale(entry: dict | None, as_of: date | pd.Timestamp | str) -> 
     """True when a series is missing, held over, or past its own release window."""
     if not entry:
         return True
-    if entry.get("status") in {"preserved", "error"} or entry.get("inputs_stale"):
+    if entry.get("status") in {"preserved", "error", "stale"} or entry.get("inputs_stale"):
         return True
     return release_is_stale(
         entry.get("latest_date"),
@@ -1289,8 +1340,17 @@ def regime_inputs_stale(entries: list[dict], as_of: date | pd.Timestamp | str) -
 
 
 _SHORT_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
-# A weekly move of this size in HYG/IEF or LQD/IEF is large enough to call credit.
+# A weekly move of this size in a duration-matched credit ratio is large enough to call credit.
 CREDIT_RATIO_MOVE = 0.30
+# One-week move, in percentage points, that counts as a rates shock.
+RATE_SHOCK_2Y = 0.15
+RATE_SHOCK_REAL = 0.10
+# Stress votes. VIX and MOVE are percent changes. Equity ratios are percent changes.
+STRESS_VIX = 8.0
+STRESS_MOVE = 5.0
+STRESS_KRE = -1.5
+STRESS_IWM = -2.0
+DEFAULT_MAX_AGE_DAYS = {"Daily": 5, "Weekly": 12, "Monthly": 45, "Quarterly": 120}
 
 
 def _short_day(iso: str | None) -> str | None:
@@ -1390,7 +1450,63 @@ def regime_words(entries: list[dict], as_of: date | pd.Timestamp | str | None = 
         else:
             conditions = "conditions neutral"
         words.append(_regime_word(conditions, ["NFCI"], stale=dated("NFCI")[0], as_of=dated("NFCI")[1]))
+    if as_of is not None and ("DGS2" in by_key or "DFII10" in by_key):
+        words.append(_rates_shock_word(by_key, week, dated))
+    if as_of is not None and any(key in by_key for key in ("^VIX", "^MOVE", "KRESPY", "IWM")):
+        words.append(_stress_word(by_key, week, dated))
     return words
+
+
+def _rates_shock_word(by_key: dict[str, dict], week, dated) -> dict:
+    """A 15bp weekly move in the 2-year, or 10bp in the 10-year real yield, is a shock."""
+    two_year = week("DGS2")
+    real = week("DFII10")
+    fired = (two_year is not None and abs(two_year) >= RATE_SHOCK_2Y) or (
+        real is not None and abs(real) >= RATE_SHOCK_REAL
+    )
+    signed = (two_year or 0.0) + (real or 0.0)
+    if not fired:
+        text = "rates calm"
+    elif signed >= 0:
+        text = "rates shock higher"
+    else:
+        text = "rates shock lower"
+    keys = [key for key in ("DGS2", "DFII10") if key in by_key]
+    stale_dates = [dated(key)[1] for key in keys if dated(key)[0]]
+    return _regime_word(text, keys, stale=bool(stale_dates), as_of=stale_dates[0] if stale_dates else None)
+
+
+def _stress_word(by_key: dict[str, dict], week, dated) -> dict:
+    """Two or more risk-off votes from VIX, MOVE, KRE/SPY, and small caps."""
+    votes = 0
+    support = 0
+    vix = week("^VIX")
+    move = week("^MOVE")
+    banks = week("KRESPY")
+    small = week("IWM")
+    if vix is not None:
+        votes += vix >= STRESS_VIX
+        support += vix <= -STRESS_VIX
+    if move is not None:
+        votes += move >= STRESS_MOVE
+        support += move <= -STRESS_MOVE
+    if banks is not None:
+        votes += banks <= STRESS_KRE
+        support += banks >= -STRESS_KRE
+    if small is not None:
+        votes += small <= STRESS_IWM
+        support += small >= -STRESS_IWM
+    if votes >= 2:
+        text = "stress rising"
+    elif support >= 2:
+        text = "stress easing"
+    else:
+        text = "stress calm"
+    keys = [key for key in ("^VIX", "^MOVE", "KRESPY", "IWM") if key in by_key]
+    stale_keys = [key for key in keys if dated(key)[0]]
+    stale = len(stale_keys) * 2 > len(keys) if keys else False
+    as_of = dated(stale_keys[0])[1] if stale and stale_keys else None
+    return _regime_word(text, keys, stale=stale, as_of=as_of)
 
 
 def _credit_from_spread(change: float | None) -> str:
@@ -1418,7 +1534,7 @@ def _credit_word(by_key: dict[str, dict], week, as_of: date | pd.Timestamp | str
     """HY spread when it is fresh. HYG/IEF, then LQD/IEF, when that FRED spread is stale."""
     hy_stale = as_of is not None and component_is_stale(by_key.get("BAMLH0A0HYM2"), as_of)
     if hy_stale:
-        for key, source in (("HYGIEF", "HYG/IEF"), ("LQDIEF", "LQD/IEF")):
+        for key, source in (("HYGIEI", "HYG/IEI"), ("LQDIEF", "LQD/IEF")):
             entry = by_key.get(key)
             if entry is None or component_is_stale(entry, as_of):
                 continue
@@ -1429,8 +1545,14 @@ def _credit_word(by_key: dict[str, dict], week, as_of: date | pd.Timestamp | str
 def regime_readout(entries: list[dict], as_of: date | pd.Timestamp | str | None = None) -> str:
     """One rule-based line from the regime-strip series."""
     words = regime_words(entries, as_of)
-    stress_labels = {"liquidity falling", "real rates high", "credit widening", "dollar firm", "conditions tight"}
-    ease_labels = {"liquidity rising", "real rates low", "credit narrowing", "dollar soft", "conditions easy"}
+    stress_labels = {
+        "liquidity falling", "real rates high", "credit widening", "dollar firm",
+        "conditions tight", "rates shock higher", "stress rising",
+    }
+    ease_labels = {
+        "liquidity rising", "real rates low", "credit narrowing", "dollar soft",
+        "conditions easy", "rates shock lower", "stress easing",
+    }
     phrases = [word["text"] for word in words]
     stress = sum(part in stress_labels for part in phrases)
     ease = sum(part in ease_labels for part in phrases)

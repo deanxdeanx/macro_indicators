@@ -247,7 +247,10 @@ function groupEntries(group) {
 }
 
 function entriesFor(tab) {
-  return tab === "companies" ? groupEntries("companies") : groupEntries(tab);
+  if (tab === "valuation" || tab === "companies" || tab === "semis") {
+    return groupEntries("companies").concat(groupEntries("semis"));
+  }
+  return groupEntries(tab);
 }
 
 function observationsOf(entry) {
@@ -361,7 +364,7 @@ function chartElementId(entry) {
 }
 
 const FONT_STACK = '"Instrument Sans", ui-sans-serif, system-ui, sans-serif';
-const AXIS_FONT = { family: FONT_STACK, color: "rgba(255,255,255,0.68)", size: 11 };
+const AXIS_FONT = { family: FONT_STACK, color: "rgba(255,255,255,0.72)", size: 13 };
 const LABEL_FONT = { family: FONT_STACK, color: "rgba(255,255,255,0.72)", size: 12 };
 
 function fillFor(color) {
@@ -537,7 +540,7 @@ function baseLayout(height, topMargin) {
     hoverlabel: {
       bgcolor: "#0c1e1e",
       bordercolor: "rgba(255,255,255,0.12)",
-      font: { family: FONT_STACK, color: "#ffffff", size: 12 },
+      font: { family: FONT_STACK, color: "#ffffff", size: 14 },
     },
   };
 }
@@ -634,7 +637,7 @@ function drawInset(elementId, rows, unit, name) {
     xaxis: xAxis(rows.map((row) => row[0])),
     yaxis: { ...y, side: "right" },
   };
-  Plotly.react(node, [{
+  drawPlot(node, [{
     x: rows.map((row) => row[0]),
     y: rows.map((row) => row[1]),
     type: "scatter",
@@ -672,7 +675,7 @@ function drawLine(entry, visible) {
     yaxis: y,
     shapes: zeroLine(y.range[0], y.range[1], entry.unit),
   };
-  Plotly.react(node, [trace], layout, PLOT_CONFIG);
+  drawPlot(node, [trace], layout);
 }
 
 function drawDual(entry, visible, overlay, overlayName, overlayUnit) {
@@ -690,7 +693,7 @@ function drawDual(entry, visible, overlay, overlayName, overlayUnit) {
       side: "right",
     },
   };
-  Plotly.react(node, [
+  drawPlot(node, [
     {
       x: visible.map((row) => row[0]),
       y: visible.map((row) => row[1]),
@@ -712,7 +715,7 @@ function drawDual(entry, visible, overlay, overlayName, overlayUnit) {
       hovertemplate: `%{customdata}<extra>${escapeHtml(overlayName)}</extra>`,
       customdata: overlay.map((row) => formatHoverValue(row[1], overlayUnit)),
     },
-  ], layout, PLOT_CONFIG);
+  ], layout);
 }
 
 function drawComparison(seriesList) {
@@ -748,7 +751,7 @@ function drawComparison(seriesList) {
       font: LABEL_FONT,
     }],
   };
-  Plotly.react(node, traces, layout, PLOT_CONFIG);
+  drawPlot(node, traces, layout);
 }
 
 const REGIME = [
@@ -883,9 +886,23 @@ function regimeVerdict(text) {
   return "stale — no call";
 }
 
+function pinHover(node) {
+  if (!node || node.dataset.hoverPinned) return;
+  node.dataset.hoverPinned = "1";
+  node.on("plotly_hover", () => {
+    const label = node.querySelector(".hovertext");
+    if (label) label.setAttribute("transform", "translate(12, 18)");
+  });
+}
+
+function drawPlot(node, traces, layout) {
+  Plotly.react(node, traces, layout, PLOT_CONFIG);
+  pinHover(node);
+}
+
 function entryIsStale(entry) {
   if (!entry) return true;
-  if (entry.status === "preserved" || entry.status === "error" || entry.inputs_stale) return true;
+  if (entry.status === "preserved" || entry.status === "error" || entry.status === "stale" || entry.inputs_stale) return true;
   return releaseIsStale(entry.latest_date, entry.frequency, todayISO(), entry.max_age_days);
 }
 
@@ -1045,6 +1062,9 @@ function regimeMarkup() {
   const chip = state.catalog.fred_chip
     ? `<p class="fred-chip${String(state.catalog.fred_chip).startsWith("FRED refresh failed") ? " severe" : ""}">${escapeHtml(state.catalog.fred_chip)}</p>`
     : "";
+  const staleChip = state.catalog.stale_chip
+    ? `<p class="fred-chip">${escapeHtml(state.catalog.stale_chip)}</p>`
+    : "";
   const readout = regimeReadoutHtml();
   const legend = `<p class="regime-legend">Red means the latest week was bad for risk assets: a rise when higher is bad, or a fall when higher is good. Green means the move was supportive.</p>`;
   const movers = weekMoversLine();
@@ -1082,7 +1102,38 @@ function regimeMarkup() {
         <p class="regime-pct">${escapeHtml(pct)}</p>
       </article>`;
   }).join("");
-  return `<section class="regime-block"><div class="regime-head">${readout}${chip}</div>${legend}${movers}<div class="regime" aria-label="Risk regime">${tiles}</div></section>`;
+  return `<section class="regime-block"><div class="regime-head">${readout}${chip}${staleChip}</div>${legend}${movers}<div class="regime" aria-label="Risk regime">${tiles}</div></section>`;
+}
+
+function fedPathCard(entry) {
+  const doc = state.series.get(entry.key);
+  const contracts = doc && Array.isArray(doc.contracts) ? doc.contracts : null;
+  if (!contracts || !contracts.length) {
+    const reason = entry.last_error || "Fed funds futures were not available.";
+    return `<article class="card" id="${seriesCardId(entry)}"><h3>${escapeHtml(entry.name)}</h3><p class="alert warn">${escapeHtml(reason)}</p></article>`;
+  }
+  const effective = Number.isFinite(doc.effective_rate) ? `${doc.effective_rate.toFixed(2)}%` : "n/a";
+  const rows = contracts.map((contract) => {
+    const gap = Number(contract.versus_dff);
+    const tone = Number.isFinite(gap) ? deltaClass(gap, true) : "";
+    const gapText = Number.isFinite(gap) ? `${gap > 0 ? "+" : ""}${gap.toFixed(2)} pp` : "n/a";
+    return `<tr>
+      <td>${escapeHtml(contract.label)}</td>
+      <td>${Number(contract.implied).toFixed(2)}%</td>
+      <td class="delta ${tone}">${gapText}</td>
+    </tr>`;
+  }).join("");
+  return `<article class="card" id="${seriesCardId(entry)}">
+    <h3>${escapeHtml(entry.name)}</h3>
+    <p class="meta">ZQ futures · effective funds ${effective}</p>
+    <p class="desc">${escapeHtml(entry.description || "")}</p>
+    <div class="table-scroll">
+      <table class="semi-table">
+        <thead><tr><th>Contract</th><th>Implied</th><th>Versus funds</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </article>`;
 }
 
 function positionsCard(entry) {
@@ -1115,6 +1166,7 @@ function positionsCard(entry) {
 
 function cardMarkup(entry) {
   if (entry.key === "CFTC") return positionsCard(entry);
+  if (entry.key === "FEDPATH") return fedPathCard(entry);
   const doc = state.series.get(entry.key);
   if (doc && doc.loadError) {
     return `<article class="card"><h3>${escapeHtml(entry.name)}</h3><p class="alert bad">${escapeHtml(doc.loadError)}</p></article>`;
@@ -1354,7 +1406,134 @@ function drawSemi(entry) {
       hovertemplate: "%{customdata}<extra>P/E</extra>",
     });
   }
-  Plotly.react(node, traces, layout, PLOT_CONFIG);
+  drawPlot(node, traces, layout);
+}
+
+function drawdown52(rows) {
+  if (!rows.length) return NaN;
+  const latest = rows[rows.length - 1];
+  const cutoff = dayMs(latest[0]) - 365 * 86400000;
+  let high = latest[1];
+  for (const row of rows) {
+    if (dayMs(row[0]) >= cutoff) high = Math.max(high, row[1]);
+  }
+  if (!high) return NaN;
+  return (latest[1] / high - 1) * 100;
+}
+
+function valuationRows() {
+  const realEntry = byKey().get("DFII10");
+  const realHistory = realEntry ? rowsThrough(observationsOf(realEntry), state.end) : [];
+  const realYield = realHistory.length ? realHistory[realHistory.length - 1][1] : NaN;
+  const groups = [
+    ["Companies", groupEntries("companies")],
+    ["Semiconductors", groupEntries("semis")],
+  ];
+  const rows = [];
+  for (const [group, entries] of groups) {
+    for (const entry of entries) {
+      const history = rowsThrough(observationsOf(entry), state.end);
+      const price = history.length ? history[history.length - 1][1] : NaN;
+      const forwardPe = Number(entry.forward_pe);
+      const fcfYield = Number(entry.fcf_yield);
+      rows.push({
+        entry,
+        group,
+        price,
+        forwardPe: Number.isFinite(forwardPe) ? forwardPe : NaN,
+        fcfYield: Number.isFinite(fcfYield) ? fcfYield : NaN,
+        spread: Number.isFinite(fcfYield) && Number.isFinite(realYield) ? fcfYield - realYield : NaN,
+        drawdown: drawdown52(history),
+      });
+    }
+  }
+  return rows;
+}
+
+function renderValuation(libraryNote) {
+  const sort = state.valuationSort || { column: "name", direction: 1 };
+  const columns = [
+    ["name", "Name"],
+    ["price", "Price"],
+    ["forwardPe", "Forward P/E"],
+    ["fcfYield", "FCF yield"],
+    ["spread", "FCF − real"],
+    ["drawdown", "52w drawdown"],
+  ];
+  const header = columns.map(([column, label]) => {
+    const mark = sort.column === column ? (sort.direction > 0 ? " ↑" : " ↓") : "";
+    return `<th><button type="button" data-value-sort="${column}">${label}${mark}</button></th>`;
+  }).join("");
+  const valueOf = (row) => {
+    if (sort.column === "name") return row.entry.name;
+    return row[sort.column];
+  };
+  const compareRows = (left, right) => {
+    const a = valueOf(left);
+    const b = valueOf(right);
+    const aMissing = typeof a === "number" ? !Number.isFinite(a) : !a;
+    const bMissing = typeof b === "number" ? !Number.isFinite(b) : !b;
+    if (aMissing && bMissing) return left.entry.name.localeCompare(right.entry.name);
+    if (aMissing) return 1;
+    if (bMissing) return -1;
+    if (typeof a === "string") return a.localeCompare(b) * sort.direction;
+    return (a - b) * sort.direction;
+  };
+  const rows = ["Companies", "Semiconductors"].flatMap((group) => (
+    valuationRows().filter((row) => row.group === group).sort(compareRows)
+  ));
+  const cell = (value, digits, suffix = "") => (
+    Number.isFinite(value) ? `${value.toFixed(digits)}${suffix}` : "n/a"
+  );
+  let lastGroup = "";
+  const body = rows.map((row) => {
+    const groupRow = row.group === lastGroup ? "" : `<tr class="overview-section"><th colspan="6">${escapeHtml(row.group)}</th></tr>`;
+    lastGroup = row.group;
+    const selected = state.valuationKey === row.entry.key ? " selected" : "";
+    return `${groupRow}<tr class="${selected}" data-valuation="${escapeHtml(row.entry.key)}">
+      <th scope="row">${escapeHtml(row.entry.name)}</th>
+      <td>${cell(row.price, 2)}</td>
+      <td>${cell(row.forwardPe, 1, "x")}</td>
+      <td>${cell(row.fcfYield, 2, "%")}</td>
+      <td>${cell(row.spread, 2, " pp")}</td>
+      <td class="${Number.isFinite(row.drawdown) && row.drawdown < 0 ? "delta down" : ""}">${cell(row.drawdown, 1, "%")}</td>
+    </tr>`;
+  }).join("");
+  const selected = rows.find((row) => row.entry.key === state.valuationKey);
+  const chart = selected
+    ? (selected.group === "Semiconductors" ? semiCard(selected.entry) : cardMarkup(selected.entry))
+    : `<p class="regime-legend">Select a row to open its price chart. Forward P/E and free-cash-flow yield are n/a where the free source did not return them.</p>`;
+  panelEl().innerHTML = `
+    ${libraryNote}
+    <section class="overview-block">
+      <h2 class="section-title">Valuation</h2>
+      <p class="regime-legend">Price and the drawdown from the 52-week high come from the stored daily or monthly prices. Forward P/E and free-cash-flow yield are shown only when a free source returned them.</p>
+      <div class="table-scroll overview-scroll">
+        <table class="overview">
+          <thead><tr>${header}</tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>
+    </section>
+    <div class="card-grid">${chart}</div>`;
+  panelEl().querySelectorAll("[data-value-sort]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const column = button.dataset.valueSort;
+      const current = state.valuationSort || { column: "name", direction: 1 };
+      state.valuationSort = { column, direction: current.column === column ? -current.direction : 1 };
+      draw();
+    });
+  });
+  panelEl().querySelectorAll("tr[data-valuation]").forEach((row) => {
+    row.addEventListener("click", () => {
+      state.valuationKey = row.dataset.valuation;
+      draw();
+    });
+  });
+  if (selected) {
+    if (selected.group === "Semiconductors") drawSemi(selected.entry);
+    else bindCards([selected.entry]);
+  }
 }
 
 function renderSemis(libraryNote) {
@@ -1390,11 +1569,11 @@ function renderPanel() {
     ? `<p class="alert warn">The chart library did not load. Values are still shown, but the lines cannot be drawn.</p>`
     : "";
   purgeCharts(panelEl());
-  if (state.tab === "semis") {
-    renderSemis(libraryNote);
+  if (state.tab === "valuation" || state.tab === "companies" || state.tab === "semis") {
+    renderValuation(libraryNote);
     return;
   }
-  if (state.tab === "companies") {
+  if (state.tab === "companies-unused") {
     const entries = groupEntries("companies");
     if (!state.selectionReady) {
       state.selected = new Set(entries.slice(0, 5).map((entry) => entry.key));
@@ -1504,8 +1683,12 @@ function regimeEntries() {
 
 async function ensureTab(tab) {
   const entries = entriesFor(tab);
-  if (tab !== "macro") return ensure(entries);
-  return ensure(entries.concat(regimeEntries()));
+  if (tab === "macro") return ensure(entries.concat(regimeEntries()));
+  const real = byKey().get("DFII10");
+  if ((tab === "valuation" || tab === "companies" || tab === "semis") && real) {
+    return ensure(entries.concat([real]));
+  }
+  return ensure(entries);
 }
 
 async function activateTab(tab) {
@@ -1535,8 +1718,9 @@ function bindChrome() {
 async function init() {
   bindChrome();
   const hash = location.hash.replace("#", "");
-  if (hash === "markets" || hash === "companies" || hash === "macro" || hash === "semis") {
-    selectTab(hash, { skipHash: true });
+  const tabFromHash = hash === "companies" || hash === "semis" ? "valuation" : hash;
+  if (tabFromHash === "markets" || tabFromHash === "valuation" || tabFromHash === "macro") {
+    selectTab(tabFromHash, { skipHash: true });
   }
   try {
     const response = await fetch(dataUrl("catalog.json"), { cache: "no-cache" });
