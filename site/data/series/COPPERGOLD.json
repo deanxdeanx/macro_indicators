@@ -14,9 +14,9 @@
   "group": "macro",
   "file": "series/COPPERGOLD.json",
   "status": "ok",
-  "observation_count": 1733,
-  "latest_date": "2026-11-18",
-  "fetched_at": "2026-11-18T21:26:54Z",
+  "observation_count": 1734,
+  "latest_date": "2026-11-19",
+  "fetched_at": "2026-11-19T21:37:36Z",
   "observations": [
     [
       "2020-01-02",
@@ -6948,7 +6948,11 @@
     ],
     [
       "2026-11-18",
-      1.521045
+      1.512467
+    ],
+    [
+      "2026-11-19",
+      1.535904
     ]
   ]
 }

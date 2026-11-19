@@ -14,9 +14,9 @@
   "group": "macro",
   "file": "series/CCSA.json",
   "status": "ok",
-  "observation_count": 358,
-  "latest_date": "2026-11-07",
-  "fetched_at": "2026-11-17T21:47:05Z",
+  "observation_count": 359,
+  "latest_date": "2026-11-14",
+  "fetched_at": "2026-11-19T21:37:36Z",
   "observations": [
     [
       "2020-01-04",
@@ -1444,11 +1444,15 @@
     ],
     [
       "2026-10-31",
-      1489101.0
+      1489102.0
     ],
     [
       "2026-11-07",
-      1494818.0
+      1494837.0
+    ],
+    [
+      "2026-11-14",
+      1706484.0
     ]
   ]
 }

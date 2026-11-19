@@ -14,9 +14,9 @@
   "group": "macro",
   "file": "series/JGB10Y.json",
   "status": "ok",
-  "observation_count": 1678,
-  "latest_date": "2026-11-17",
-  "fetched_at": "2026-11-18T21:26:54Z",
+  "observation_count": 1679,
+  "latest_date": "2026-11-18",
+  "fetched_at": "2026-11-19T21:37:36Z",
   "observations": [
     [
       "2020-01-06",
@@ -6729,6 +6729,10 @@
     [
       "2026-11-17",
       2.925
+    ],
+    [
+      "2026-11-18",
+      2.916
     ]
   ]
 }
