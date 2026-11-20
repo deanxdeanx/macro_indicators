@@ -14,9 +14,9 @@
   "group": "macro",
   "file": "series/SOFR.json",
   "status": "ok",
-  "observation_count": 1718,
-  "latest_date": "2026-11-18",
-  "fetched_at": "2026-11-19T21:37:36Z",
+  "observation_count": 1719,
+  "latest_date": "2026-11-19",
+  "fetched_at": "2026-11-20T21:07:30Z",
   "observations": [
     [
       "2020-01-02",
@@ -6889,6 +6889,10 @@
     [
       "2026-11-18",
       3.9
+    ],
+    [
+      "2026-11-19",
+      3.91
     ]
   ]
 }

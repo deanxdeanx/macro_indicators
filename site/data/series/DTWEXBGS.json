@@ -14,9 +14,9 @@
   "group": "macro",
   "file": "series/DTWEXBGS.json",
   "status": "ok",
-  "observation_count": 1733,
-  "latest_date": "2026-11-19",
-  "fetched_at": "2026-11-19T21:37:36Z",
+  "observation_count": 1734,
+  "latest_date": "2026-11-20",
+  "fetched_at": "2026-11-20T21:07:30Z",
   "observations": [
     [
       "2020-01-02",
@@ -6948,7 +6948,11 @@
     ],
     [
       "2026-11-19",
-      103.931999
+      103.900002
+    ],
+    [
+      "2026-11-20",
+      103.900002
     ]
   ]
 }

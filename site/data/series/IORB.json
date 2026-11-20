@@ -14,9 +14,9 @@
   "group": "macro",
   "file": "series/IORB.json",
   "status": "ok",
-  "observation_count": 1026,
-  "latest_date": "2026-11-19",
-  "fetched_at": "2026-11-19T21:37:36Z",
+  "observation_count": 1027,
+  "latest_date": "2026-11-20",
+  "fetched_at": "2026-11-20T21:07:30Z",
   "observations": [
     [
       "2022-12-15",
@@ -4120,6 +4120,10 @@
     ],
     [
       "2026-11-19",
+      3.9
+    ],
+    [
+      "2026-11-20",
       3.9
     ]
   ]

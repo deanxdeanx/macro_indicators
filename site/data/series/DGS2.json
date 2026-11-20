@@ -14,9 +14,9 @@
   "group": "macro",
   "file": "series/DGS2.json",
   "status": "ok",
-  "observation_count": 1722,
-  "latest_date": "2026-11-19",
-  "fetched_at": "2026-11-19T21:37:36Z",
+  "observation_count": 1723,
+  "latest_date": "2026-11-20",
+  "fetched_at": "2026-11-20T21:07:30Z",
   "observations": [
     [
       "2020-01-02",
@@ -6905,6 +6905,10 @@
     [
       "2026-11-19",
       4.76
+    ],
+    [
+      "2026-11-20",
+      4.63
     ]
   ]
 }

@@ -14,9 +14,9 @@
   "group": "markets",
   "file": "series/HG-F.json",
   "status": "ok",
-  "observation_count": 1734,
-  "latest_date": "2026-11-19",
-  "fetched_at": "2026-11-19T21:37:36Z",
+  "observation_count": 1735,
+  "latest_date": "2026-11-20",
+  "fetched_at": "2026-11-20T21:07:30Z",
   "observations": [
     [
       "2020-01-02",
@@ -6952,7 +6952,11 @@
     ],
     [
       "2026-11-19",
-      5.589
+      5.625
+    ],
+    [
+      "2026-11-20",
+      5.4505
     ]
   ]
 }
