@@ -14,9 +14,9 @@
   "group": "macro",
   "file": "series/DGS3MO.json",
   "status": "ok",
-  "observation_count": 1724,
-  "latest_date": "2026-11-23",
-  "fetched_at": "2026-11-24T00:53:30Z",
+  "observation_count": 1725,
+  "latest_date": "2026-11-24",
+  "fetched_at": "2026-11-24T23:01:54Z",
   "observations": [
     [
       "2020-01-02",
@@ -6913,6 +6913,10 @@
     [
       "2026-11-23",
       4.37
+    ],
+    [
+      "2026-11-24",
+      4.36
     ]
   ]
 }

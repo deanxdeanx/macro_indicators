@@ -14,9 +14,9 @@
   "group": "markets",
   "file": "series/GC-F.json",
   "status": "ok",
-  "observation_count": 1736,
+  "observation_count": 1737,
   "latest_date": "2026-11-24",
-  "fetched_at": "2026-11-24T00:53:30Z",
+  "fetched_at": "2026-11-24T23:01:54Z",
   "observations": [
     [
       "2020-01-02",
@@ -6959,8 +6959,12 @@
       3515.399902
     ],
     [
+      "2026-11-23",
+      3651.399902
+    ],
+    [
       "2026-11-24",
-      3657.800049
+      3555.100098
     ]
   ]
 }

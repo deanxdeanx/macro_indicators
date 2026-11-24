@@ -10,18 +10,18 @@
   "group": "semis",
   "file": "semis/AVGO.json",
   "visible": true,
-  "market_cap": 1453140684686.2,
+  "market_cap": 1437244415655.17,
   "shares": 4773629865.0,
   "ordinary_per_share": 1,
   "eps_concept": "EarningsPerShareDiluted",
   "eps_unit": "USD/shares",
   "eps_basis": "quarterly TTM diluted EPS, split-adjusted to the current share count",
   "description": "quarterly TTM diluted EPS, split-adjusted to the current share count",
-  "price": 304.41,
-  "pe": 38.8278,
+  "price": 301.08,
+  "pe": 38.4031,
   "median_pe": 44.4003,
   "pe_percentile": 42.7,
-  "latest_date": "2026-11-20",
+  "latest_date": "2026-11-24",
   "observations": [
     [
       "2016-11-30",
@@ -504,8 +504,8 @@
       326.08
     ],
     [
-      "2026-11-20",
-      304.41
+      "2026-11-24",
+      301.08
     ]
   ],
   "pe_observations": [
@@ -946,11 +946,11 @@
       41.5918
     ],
     [
-      "2026-11-20",
-      38.8278
+      "2026-11-24",
+      38.4031
     ]
   ],
   "observation_count": 121,
   "status": "ok",
-  "fetched_at": "2026-11-24T00:53:30Z"
+  "fetched_at": "2026-11-24T23:01:54Z"
 }
