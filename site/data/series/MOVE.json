@@ -14,9 +14,9 @@
   "group": "markets",
   "file": "series/MOVE.json",
   "status": "ok",
-  "observation_count": 1719,
-  "latest_date": "2026-11-20",
-  "fetched_at": "2026-11-22T20:22:32Z",
+  "observation_count": 1720,
+  "latest_date": "2026-11-23",
+  "fetched_at": "2026-11-24T00:53:30Z",
   "observations": [
     [
       "2020-01-02",
@@ -6893,6 +6893,10 @@
     [
       "2026-11-20",
       106.309998
+    ],
+    [
+      "2026-11-23",
+      100.913696
     ]
   ]
 }

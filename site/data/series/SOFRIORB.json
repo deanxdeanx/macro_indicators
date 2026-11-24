@@ -14,9 +14,9 @@
   "group": "macro",
   "file": "series/SOFRIORB.json",
   "status": "ok",
-  "observation_count": 980,
-  "latest_date": "2026-11-19",
-  "fetched_at": "2026-11-22T20:22:32Z",
+  "observation_count": 981,
+  "latest_date": "2026-11-20",
+  "fetched_at": "2026-11-24T00:53:30Z",
   "observations": [
     [
       "2022-12-15",
@@ -3937,6 +3937,10 @@
     [
       "2026-11-19",
       0.01
+    ],
+    [
+      "2026-11-20",
+      0.02
     ]
   ]
 }
