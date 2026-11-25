@@ -10,18 +10,18 @@
   "group": "semis",
   "file": "semis/AMAT.json",
   "visible": true,
-  "market_cap": 256935115895.66,
+  "market_cap": 246951646500.26,
   "shares": 793597443.0,
   "ordinary_per_share": 1,
   "eps_concept": "EarningsPerShareDiluted",
   "eps_unit": "USD/shares",
   "eps_basis": "quarterly TTM diluted EPS, split-adjusted to the current share count",
   "description": "quarterly TTM diluted EPS, split-adjusted to the current share count",
-  "price": 323.76,
-  "pe": 27.9586,
+  "price": 311.18,
+  "pe": 26.8722,
   "median_pe": 19.1609,
-  "pe_percentile": 85.1,
-  "latest_date": "2026-11-24",
+  "pe_percentile": 83.5,
+  "latest_date": "2026-11-25",
   "observations": [
     [
       "2016-11-30",
@@ -504,8 +504,8 @@
       390.09
     ],
     [
-      "2026-11-24",
-      323.76
+      "2026-11-25",
+      311.18
     ]
   ],
   "pe_observations": [
@@ -990,11 +990,11 @@
       33.6865
     ],
     [
-      "2026-11-24",
-      27.9586
+      "2026-11-25",
+      26.8722
     ]
   ],
   "observation_count": 121,
   "status": "ok",
-  "fetched_at": "2026-11-24T23:01:54Z"
+  "fetched_at": "2026-11-25T22:34:42Z"
 }

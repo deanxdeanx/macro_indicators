@@ -1,11 +1,11 @@
 {
   "key": "WTREGEN",
   "name": "Treasury General Account",
-  "source": "US Treasury",
+  "source": "Federal Reserve H.4.1",
   "unit": "$ billions",
-  "frequency": "Daily",
+  "frequency": "Weekly",
   "change_mode": "percent",
-  "description": "Daily Treasury general account closing balance from the Daily Treasury Statement, in billions.",
+  "description": "US Treasury general account at the Fed, week average, shown in billions.",
   "transform": "none",
   "max_age_days": 12,
   "section": "Liquidity",
@@ -16,7 +16,7 @@
   "status": "ok",
   "observation_count": 1277,
   "latest_date": "2026-11-23",
-  "fetched_at": "2026-11-24T23:01:54Z",
+  "fetched_at": "2026-11-25T22:34:42Z",
   "observations": [
     [
       "2020-01-01",
@@ -4760,7 +4760,7 @@
     ],
     [
       "2026-07-15",
-      795.976
+      756.218
     ],
     [
       "2026-07-16",
@@ -4780,7 +4780,7 @@
     ],
     [
       "2026-07-22",
-      835.417
+      829.623
     ],
     [
       "2026-07-23",
@@ -4936,7 +4936,7 @@
     ],
     [
       "2026-09-16",
-      991.708
+      877.028
     ],
     [
       "2026-09-17",
@@ -5012,7 +5012,7 @@
     ],
     [
       "2026-10-14",
-      885.823
+      883.373
     ],
     [
       "2026-10-15",
@@ -5032,7 +5032,7 @@
     ],
     [
       "2026-10-21",
-      945.153
+      952.002
     ],
     [
       "2026-10-22",
