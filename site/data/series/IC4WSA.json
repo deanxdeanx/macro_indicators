@@ -14,9 +14,9 @@
   "group": "macro",
   "file": "series/IC4WSA.json",
   "status": "ok",
-  "observation_count": 359,
-  "latest_date": "2026-11-14",
-  "fetched_at": "2026-11-19T21:37:36Z",
+  "observation_count": 360,
+  "latest_date": "2026-11-21",
+  "fetched_at": "2026-11-26T22:22:19Z",
   "observations": [
     [
       "2020-01-04",
@@ -1452,7 +1452,11 @@
     ],
     [
       "2026-11-14",
-      190243.5
+      190263.25
+    ],
+    [
+      "2026-11-21",
+      199984.5
     ]
   ]
 }
