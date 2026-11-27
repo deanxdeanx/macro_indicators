@@ -14,9 +14,9 @@
   "group": "macro",
   "file": "series/DFII10.json",
   "status": "ok",
-  "observation_count": 1726,
-  "latest_date": "2026-11-25",
-  "fetched_at": "2026-11-26T22:22:19Z",
+  "observation_count": 1727,
+  "latest_date": "2026-11-27",
+  "fetched_at": "2026-11-27T21:58:49Z",
   "observations": [
     [
       "2020-01-02",
@@ -6921,6 +6921,10 @@
     [
       "2026-11-25",
       2.73
+    ],
+    [
+      "2026-11-27",
+      2.79
     ]
   ]
 }

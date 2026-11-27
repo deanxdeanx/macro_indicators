@@ -14,9 +14,9 @@
   "group": "companies",
   "file": "series/BRK-B.json",
   "status": "ok",
-  "observation_count": 1735,
-  "latest_date": "2026-11-25",
-  "fetched_at": "2026-11-26T22:22:19Z",
+  "observation_count": 1736,
+  "latest_date": "2026-11-27",
+  "fetched_at": "2026-11-27T21:58:49Z",
   "observations": [
     [
       "2020-01-02",
@@ -6957,6 +6957,10 @@
     [
       "2026-11-25",
       579.320007
+    ],
+    [
+      "2026-11-27",
+      580.789978
     ]
   ]
 }

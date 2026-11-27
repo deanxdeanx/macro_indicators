@@ -15,8 +15,8 @@
   "file": "series/DTWEXBGS.json",
   "status": "ok",
   "observation_count": 1738,
-  "latest_date": "2026-11-26",
-  "fetched_at": "2026-11-26T22:22:19Z",
+  "latest_date": "2026-11-27",
+  "fetched_at": "2026-11-27T21:58:49Z",
   "observations": [
     [
       "2020-01-02",
@@ -6967,8 +6967,8 @@
       103.669998
     ],
     [
-      "2026-11-26",
-      103.755997
+      "2026-11-27",
+      104.014
     ]
   ]
 }

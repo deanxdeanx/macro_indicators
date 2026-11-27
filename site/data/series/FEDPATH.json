@@ -15,24 +15,24 @@
   "file": "series/FEDPATH.json",
   "status": "ok",
   "observation_count": 4,
-  "latest_date": "2026-11-26",
-  "fetched_at": "2026-11-26T22:22:19Z",
+  "latest_date": "2026-11-27",
+  "fetched_at": "2026-11-27T21:58:49Z",
   "observations": [
     [
-      "2026-11-25",
-      3.8775
+      "2026-11-27",
+      3.88
     ],
     [
-      "2026-11-26",
+      "2026-11-27",
       4.055
     ],
     [
-      "2026-11-26",
-      4.15
+      "2026-11-27",
+      4.145
     ],
     [
-      "2026-11-26",
-      4.285
+      "2026-11-27",
+      4.29
     ]
   ],
   "display": "fedpath",
@@ -40,34 +40,34 @@
     {
       "symbol": "ZQX26.CBT",
       "label": "Nov 2026",
-      "price": 96.1225,
-      "implied": 3.8775,
-      "as_of": "2026-11-25",
-      "versus_dff": -0.0025
+      "price": 96.12,
+      "implied": 3.88,
+      "as_of": "2026-11-27",
+      "versus_dff": 0.0
     },
     {
       "symbol": "ZQZ26.CBT",
       "label": "Dec 2026",
       "price": 95.945,
       "implied": 4.055,
-      "as_of": "2026-11-26",
+      "as_of": "2026-11-27",
       "versus_dff": 0.175
     },
     {
       "symbol": "ZQF27.CBT",
       "label": "Jan 2027",
-      "price": 95.85,
-      "implied": 4.15,
-      "as_of": "2026-11-26",
-      "versus_dff": 0.27
+      "price": 95.855,
+      "implied": 4.145,
+      "as_of": "2026-11-27",
+      "versus_dff": 0.265
     },
     {
       "symbol": "ZQG27.CBT",
       "label": "Feb 2027",
-      "price": 95.715,
-      "implied": 4.285,
-      "as_of": "2026-11-26",
-      "versus_dff": 0.405
+      "price": 95.71,
+      "implied": 4.29,
+      "as_of": "2026-11-27",
+      "versus_dff": 0.41
     }
   ],
   "effective_rate": 3.88

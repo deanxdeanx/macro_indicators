@@ -14,9 +14,9 @@
   "group": "macro",
   "file": "series/WALCL.json",
   "status": "ok",
-  "observation_count": 360,
-  "latest_date": "2026-11-18",
-  "fetched_at": "2026-11-26T22:22:19Z",
+  "observation_count": 361,
+  "latest_date": "2026-11-25",
+  "fetched_at": "2026-11-27T21:58:49Z",
   "observations": [
     [
       "2020-01-01",
@@ -1457,6 +1457,10 @@
     [
       "2026-11-18",
       6741.452
+    ],
+    [
+      "2026-11-25",
+      6732.044
     ]
   ]
 }

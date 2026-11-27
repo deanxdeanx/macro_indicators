@@ -15,8 +15,8 @@
   "file": "series/COPPERGOLD.json",
   "status": "ok",
   "observation_count": 1739,
-  "latest_date": "2026-11-26",
-  "fetched_at": "2026-11-26T22:22:19Z",
+  "latest_date": "2026-11-27",
+  "fetched_at": "2026-11-27T21:58:49Z",
   "observations": [
     [
       "2020-01-02",
@@ -6971,8 +6971,8 @@
       1.508145
     ],
     [
-      "2026-11-26",
-      1.512078
+      "2026-11-27",
+      1.526646
     ]
   ]
 }

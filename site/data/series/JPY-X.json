@@ -14,9 +14,9 @@
   "group": "macro",
   "file": "series/JPY-X.json",
   "status": "ok",
-  "observation_count": 1797,
-  "latest_date": "2026-11-26",
-  "fetched_at": "2026-11-26T22:22:19Z",
+  "observation_count": 1798,
+  "latest_date": "2026-11-27",
+  "fetched_at": "2026-11-27T21:58:49Z",
   "observations": [
     [
       "2020-01-01",
@@ -7204,7 +7204,11 @@
     ],
     [
       "2026-11-26",
-      159.223007
+      159.214996
+    ],
+    [
+      "2026-11-27",
+      159.572006
     ]
   ]
 }
